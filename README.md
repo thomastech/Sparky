@@ -26,3 +26,7 @@ https://www.rc-cam.com/forum/index.php?/topic/4605-sparky-a-little-stick-welder-
 An inverter welder is a potentially dangerous machine. Lethal primary voltages (>300 volts) are present inside the cabinet,
 even after power is turned off. The involved currents have more than enough energy to vaporize misplaced wiring (and misguided hand 
 tools) in a dangerously hot explosive flash. Proceed at your own risk.
+
+### Demo Video: Click image to play
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=wUnMgO00LOM" target="_blank"><img src="https://user-images.githubusercontent.com/10354989/67133271-e46eeb00-f1c0-11e9-92cb-bf2c53ea3150.jpg" 
+alt="CAN2Cluster Project Introduction" width="300" height="180" border="10" /></a>  
