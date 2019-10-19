@@ -2,7 +2,7 @@
 # SPARKY Source Code
 
 ### Introduction
-The SPARKY project uses ESP32 Arduino Libraries. Compiling requires VSCode/Platformio IDE. It is not intended to 
+The SPARKY project uses ESP32 Arduino Libraries. Compiling requires VSCode with the Platformio IDE extension and Espressif 32 board platform. It is not intended to 
 be compiled with the Arduino IDE.
 All the software source files are provided so you can make changes. 
 
@@ -14,13 +14,12 @@ https://www.rc-cam.com/forum/index.php?/topic/4605-sparky-a-little-stick-welder-
 The entries in the config.h file are provide so you can personalize common default settings.
 
 ### The Fine Print
-This project is not intended for coding beginners. If your Cpp coding experience is limited then start with a 
-simpler project. There are many Arduino forums and YouTube instructional videos that will help get you going. 
-To put it bluntly, don't use the SPARKY community to ask for general Arduino help.
+The source files can be modified to customize it to your application. It is not intended for coding beginners; 
+If your Cpp coding experience is limited then start with a simpler project. There are many Arduino forums and 
+YouTube instructional videos that will help get you going.
 
 ### Platformio
-The project successfully compiles on Visual Studio Code Version 1.39.2 with Platformio Home 2.3.3, Core 4.0.3.
-All required files are provided, including important library dependencies.
+The project successfully compiles on Visual Studio Code Version 1.39.2 with Platformio IDE 1.9.0, and Espressif32 1.11.0 board platform. All required files are provided, including important library dependencies.
 
 ### Source Code Formatting
 All .cpp and .h files have been formatted with the Uncrustify extension. The uncrustify.cfg file is included in the file package.
