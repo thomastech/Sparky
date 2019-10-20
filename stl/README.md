@@ -16,4 +16,7 @@ A 3D printed Clip slides into the slot at the far-end of the Rear Chassis.
 It locks the plastic housing to the metal cabinet. A single M2x12 screw holds it in place. 
 
 ![STL_file_image1_500](https://user-images.githubusercontent.com/10354989/67136585-14c48280-f1dd-11e9-822e-0320249031e0.jpg)
+    
+    
+A revised strain relief is required when the AC mains cord is changed to 12/3 (12AWG) SJTO flexible portable cord. The strain relief STL file is included.    
 ![STL_file_image2_250](https://user-images.githubusercontent.com/10354989/67136587-168e4600-f1dd-11e9-9c5f-434dcca10c0d.jpg)
