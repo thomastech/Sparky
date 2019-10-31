@@ -1,0 +1,22 @@
+List of XT DAC Audio library changes made for the Welder Project:
+Custom patches by Thomas, Sep-29-2019 through Oct-23-2019
+
+1. Playback breaks if buffer size is changed from the default 4KB. Fixed, change to FillBuffer().
+
+2. Volume cannot be adjusted during runtime. Fixed, added new DacVolume property to XT_DAC_Audio_Class.
+   Usage: 
+   DacAudio.DacVolume = 75;  // Allowed volume range is 0 to 100. 
+
+3. Crash/reboot if ESP32 EEPROM is written during playback. Fixed onTimer() isr, used inline code for DAC hardware.
+
+4. Pop noise at start of playback. Fixed, correction to onTimer(), "silence" value.
+
+5. Fixed Intermittent garbled audio.
+
+6. Revised pointer declarations to use nullptr instead of NULL/zero.
+
+7. Added XT_Wav_Class and XT_Sequence_Class sub-volume control property.
+
+8. Steve added ClearAfterPlay property, per our email discussions.
+
+All patches have been shared with Steve at XTronical. He will incorporate them in the next official XT DAC Audio release.
