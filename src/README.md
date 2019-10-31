@@ -19,7 +19,7 @@ The project successfully compiles on Visual Studio Code Version 1.39.2 with Plat
 board platform (development release Oct-28-2019 or higher). It might compile with a stable release version higher than 1.11.0. 
 
 ### Project Files
-All required files are provided, including any special library dependencies.
+All required files are provided, including any special library dependencies. Install the files (do not change directory structure) in a project folder named PulseWelder.
 
 ### Source Code Formatting
 All .cpp and .h files have been formatted with the Uncrustify extension. The uncrustify.cfg file is included in the file package.
