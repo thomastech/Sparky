@@ -65,9 +65,10 @@ eBay: https://ebay.to/2MIkNqo
 ![ble_fob1_350](https://user-images.githubusercontent.com/10354989/67116907-45cd9480-f196-11e9-8eed-69bcddb88776.jpg)
 
 * **Misc Components**   
-1/8W 5% resistors: 47K, 1.8K, 4.7K, 2 pcs 10K    
-Ceramic Caps: 0.01uF/50V, .1uF/50V   
-Electrolytic Caps: 0.47uF/10V, 10uF/10V, 220uF/10V, 100uF/16V, 470uF/10V  
+1/8W 5% resistors: 47K (R1), 1.8K (R2), 4.7K (R4), 2 pcs 10K (R3,R5)    
+Ceramic Caps: 0.01uF/50V (C5), 0.1uF/50V (C6)
+Electrolytic Caps: 0.47uF/10V (C1), 100uF/16V (C8), 470uF/10V (C7)
+Not Installed: C2, C3, C4 (optional).
 
 * **Misc Hardware**   
 Self tapping screws needed: 7 pcs M2x6, 2 pcs M2x10, 1 pc M2x12   
