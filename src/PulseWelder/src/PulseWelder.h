@@ -25,6 +25,7 @@
 #define OC_PIN 34
 #define VP_PIN 36
 #define VN_PIN 39
+#define POT_CS 26 // if using SPI POT MCP41HV51, not I2C MCP45HV51
 // #define DEBUG_PIN 2
 
 // TFT Pin Definitions (Using LoLin D32 Pro defaults)
@@ -145,13 +146,10 @@ void stopBle(void);
 
 // Digital Pot Protoypes
 bool digitalPotWrite(byte dataValue,
-                     byte memAddr,
-                     byte chipAddr);
-byte digitalPotRead(byte memAddr,
-                    byte chipAddr);
-bool initDigitalPot(byte chipAddr);
+                     byte memAddr);
+byte digitalPotRead(byte memAddr);
+bool initDigitalPot(byte chipAddr, int spi_cs);
 void setPotAmps(byte ampVal,
-                byte chipAddr,
                 bool verbose);
 
 // Display Prototypes

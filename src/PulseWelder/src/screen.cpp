@@ -311,7 +311,7 @@ void processScreen(void)
 
         if (arcSwitch == ARC_ON) {
           Serial.println("Arc Current Turned On (" + String(setAmps) + " Amps)");
-          setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
+          setPotAmps(setAmps, true); // Refresh Digital Pot.
 
           if (spkrVolSwitch != VOL_OFF) {
             DacAudio.Play(&highBeep, true);
@@ -319,7 +319,7 @@ void processScreen(void)
         }
         else {
           Serial.println("Arc Current Turned Off (limited to " + String(SET_AMPS_DISABLE) + " Amps).");
-          setPotAmps(SET_AMPS_DISABLE, POT_I2C_ADDR, true); // Set Digital Pot to lowest welding current.
+          setPotAmps(SET_AMPS_DISABLE, true); // Set Digital Pot to lowest welding current.
 
           if (spkrVolSwitch != VOL_OFF) {
             DacAudio.Play(&lowBeep, true);
@@ -403,7 +403,7 @@ void processScreen(void)
         setAmpsActive    = true;
         setAmps++;
         setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-        setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
+        setPotAmps(setAmps, true); // Refresh Digital Pot.
         displayAmps(true);                       // Refresh displayed value.
         arrowMillis       = millis();
         previousEepMillis = millis();
@@ -431,7 +431,7 @@ void processScreen(void)
         setAmpsActive    = true;
         setAmps--;
         setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-        setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
+        setPotAmps(setAmps, true); // Refresh Digital Pot.
         displayAmps(true);                       // Refresh displayed value.
         arrowMillis       = millis();
         previousEepMillis = millis();
@@ -468,10 +468,10 @@ void processScreen(void)
         displayAmps(true); // Refresh Amps display to update background color.
 
         if (arcSwitch == ARC_ON) {
-          setPotAmps(setAmps, POT_I2C_ADDR, false);
+          setPotAmps(setAmps, false);
         }
         else {
-          setPotAmps(SET_AMPS_DISABLE, POT_I2C_ADDR, false);
+          setPotAmps(SET_AMPS_DISABLE, false);
         }
         previousEepMillis = millis();
         eepromActive      = true; // Request EEProm Write after timer expiry.
@@ -500,7 +500,7 @@ void processScreen(void)
           eepromActive      = true;                // Request EEProm Write after timer expiry.
           setAmps++;
           setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-          setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
+          setPotAmps(setAmps, true); // Refresh Digital Pot.
           displayAmps(true);                       // Refresh amps value.
 
           if (spkrVolSwitch != VOL_OFF) {
@@ -535,7 +535,7 @@ void processScreen(void)
           eepromActive      = true;                // Request EEProm Write after timer expiry.
           setAmps--;
           setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-          setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
+          setPotAmps(setAmps, true); // Refresh Digital Pot.
           displayAmps(true);                       // Refresh value.
 
           if (spkrVolSwitch != VOL_OFF) {

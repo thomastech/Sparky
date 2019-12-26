@@ -159,7 +159,7 @@ void setup()
   }
 
   // Setup Digital Pot. Must setup INA219 before the Digital Pot due to the shared i2c.
-  if (initDigitalPot(POT_I2C_ADDR) == false) {
+  if (initDigitalPot(POT_I2C_ADDR, POT_CS) == false) {
     systemError |= ERROR_DIGPOT;
   }
 
@@ -169,10 +169,10 @@ void setup()
 
   // Set Welding Current (Digital Pot).
   if (arcSwitch == ARC_ON) {
-    setPotAmps(setAmps, POT_I2C_ADDR, true);
+    setPotAmps(setAmps, true);
   }
   else {
-    setPotAmps(SET_AMPS_DISABLE, POT_I2C_ADDR, true);
+    setPotAmps(SET_AMPS_DISABLE, true);
   }
 
   // Init SPIFFS (SPIFFS is not used in this project).

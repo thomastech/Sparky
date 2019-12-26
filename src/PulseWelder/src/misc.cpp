@@ -183,7 +183,7 @@ void remoteControl(void)
 
     Serial.println(String(amps100) + "-" + String(amps10) + "-" + String(amps1));
 
-    setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
+    setPotAmps(setAmps, true); // Refresh Digital Pot.
 
     if (spkrVolSwitch != VOL_OFF) {
       if (amps100 > 0) {                     // Suppress extraneous leading zero.
@@ -221,7 +221,7 @@ void pulseModulation(void)
 
   if (pulseSwitch == PULSE_OFF) { // Pulse mode is disabled. Refresh Digital POT every 0.5Sec, exit.
     if (millis() > previousMillis + 500) {
-      setPotAmps(setAmps, POT_I2C_ADDR, false);
+      setPotAmps(setAmps, false);
       previousMillis = millis();
     }
     pulseState = true;                      // Arc current in On.
@@ -245,7 +245,7 @@ void pulseModulation(void)
       ampVal = constrain(ampVal, MIN_SET_AMPS, MAX_SET_AMPS);
 
       //          Serial.println("Amps: " + String(setAmps) + ", bg: " + String(ampVal));  // Debug.
-      setPotAmps((byte)(ampVal), POT_I2C_ADDR, false);
+      setPotAmps((byte)(ampVal), false);
     }
   }
 }
