@@ -59,7 +59,7 @@ bool initCurrentSensor(void)
     Serial.println("Initialized INA219 Current Sensor at Address 0x" + String(INA219_ADDR, HEX) + ".");
     delay(1);
     ina219.reset();
-    ina219.configure(BUS_RANGE_16V, PGA_RANGE_160MV, SAMPLE_AVG_128, CONTINUOS_OP); // Note: 68mS Sample Time!
+    ina219.configure(BUS_RANGE_16V, PGA_RANGE_160MV, SAMPLE_9BITS, SAMPLE_12BITS, CONTINUOS_OP_NO_VOLTAGE); // 532uS
     ina219.calibrate(SHUNT_OHMS, SHUNT_V_MAX, BUS_V_MAX, MAX_I_EXPECTED);
     success = true;
   }

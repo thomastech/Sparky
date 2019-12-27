@@ -85,9 +85,14 @@
 // INA219 Defines.
 #define INA219_ADDR 0x40          // i2c address of Current sensor.
 #define BUS_RANGE_16V 0           // We don't measure Bus voltage, but it will get set to 16V.
-#define CONTINUOS_OP 7            // Continuous Sampling, no trigger required.
-#define PGA_RANGE_160MV 2         // Set PGA gain to allow our expected shunt voltage range.
-#define SAMPLE_AVG_128 16         // 128 Samples takes 69mS per acq.
+#define CONTINUOS_OP_NO_VOLTAGE 5 // Continuous Sampling of Shunt but not Bus voltage, no trigger required.
+#define CONTINUOS_OP            7 // Continuous Sampling of Shunt and Bus voltage, no trigger required.
+#define PGA_RANGE_160MV 2         // Set PGA gain to 160mv to allow our expected shunt voltage range.
+#define PGA_RANGE_320MV 3         // Set PGA gain to 320mV to allow our expected shunt voltage range.
+#define SAMPLE_AVG_128 15         // 128 Samples takes 69mS per acq.
+#define SAMPLE_9BITS    0         // 9 bits takes 84uS per acq.
+#define SAMPLE_12BITS   3         // 12 bits takes 532uS per acq.
+
 #define BUS_V_MAX 1.0             // Maximum Bus voltage (same as shunt voltage), in VDC.
 #define MAX_I_EXPECTED 200.0      // Maximum Expected Current, in Amps.
 
