@@ -1,12 +1,15 @@
 /*
    File: dacAudio.h
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.0
+   Version: 1.1
    Creation: Sep-11-2019
-   Revised: Oct-24-2019
-   Release: Oct-30-2019
-   Author: T. Black
-   (c) copyright T. Black 2019, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
+   Revised: Dec-29-2019.
+   Public Release: Jan-03-2020
+   Revision History: See PulseWelder.cpp
+   Project Leader: T. Black (thomastech)
+   Contributors: thomastech
+
+   (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
 
    The female voice is Microsoft Zira. https://developer.microsoft.com/en-us/microsoft-edge/testdrive/demos/speechsynthesis/
@@ -29,52 +32,46 @@ int8_t PROGMEM lowBeepTone[] = {
 
 // Audio Files
 extern const uint8_t promo_wav_start[] asm ("_binary_src_wav_promo_wav_start");
-
 // extern const uint8_t promo_wav_end[] asm("_binary_src_wav_promo_wav_end");
 const unsigned char *promo_wav = (const unsigned char *)promo_wav_start;
 
 extern const uint8_t ding_wav_start[] asm ("_binary_src_wav_ding_wav_start");
-
 // extern const uint8_t ding_wav_end[] asm("_binary_src_wav_ding_wav_end");
 const unsigned char *ding_wav = (const unsigned char *)ding_wav_start;
 
 extern const uint8_t beep_wav_start[] asm ("_binary_src_wav_beep_wav_start");
-
 // extern const uint8_t beep_wav_end[] asm("_binary_src_wav_beep_wav_end");
 const unsigned char *beep_wav = (const unsigned char *)beep_wav_start;
 
 extern const uint8_t blip_wav_start[] asm ("_binary_src_wav_blip_wav_start");
-
 // extern const uint8_t blip_wav_end[] asm("_binary_src_wav_blip_wav_end");
 const unsigned char *blip_wav = (const unsigned char *)blip_wav_start;
 
 extern const uint8_t bleep_wav_start[] asm ("_binary_src_wav_bleep_wav_start");
-
 // extern const uint8_t bleep_wav_end[] asm("_binary_src_wav_bleep_wav_end");
 const unsigned char *bleep_wav = (const unsigned char *)bleep_wav_start;
 
 extern const uint8_t bloop_wav_start[] asm ("_binary_src_wav_bloop_wav_start");
-
 // extern const uint8_t bloop_wav_end[] asm("_binary_src_wav_bloop_wav_end");
 const unsigned char *bloop_wav = (const unsigned char *)bloop_wav_start;
 
-extern const uint8_t overheat_wav_start[] asm ("_binary_src_wav_overheat_wav_start");
+extern const uint8_t currentOn_wav_start[] asm ("_binary_src_wav_currentOn_wav_start");
+// extern const uint8_t currentOn_wav_end[] asm("_binary_src_wav_currentOn_wav_end");
+const unsigned char *currentOn_wav = (const unsigned char *)currentOn_wav_start;
 
+extern const uint8_t overheat_wav_start[] asm ("_binary_src_wav_overheat_wav_start");
 // extern const uint8_t overheat_wav_end[] asm("_binary_src_wav_overheat_wav_end");
 const unsigned char *overheat_wav = (const unsigned char *)overheat_wav_start;
 
 extern const uint8_t increaseMsg_wav_start[] asm ("_binary_src_wav_increaseMsg_wav_start");
-
 // extern const uint8_t increaseMsg_wav_end[] asm("_binary_src_wav_increaseMsg_wav_end");
 const unsigned char *increaseMsg_wav = (const unsigned char *)increaseMsg_wav_start;
 
 extern const uint8_t decreaseMsg_wav_start[] asm ("_binary_src_wav_decreaseMsg_wav_start");
-
 // extern const uint8_t decreaseMsg_wav_end[] asm("_binary_src_wav_decreaseMsg_wav_end");
 const unsigned char *decreaseMsg_wav = (const unsigned char *)decreaseMsg_wav_start;
 
 extern const uint8_t silence100ms_wav_start[] asm ("_binary_src_wav_silence100ms_wav_start");
-
 // extern const uint8_t silence100ms_wav_end[] asm("_binary_src_wav_silence100ms_wav_end");
 const unsigned char *silence100ms_wav = (const unsigned char *)silence100ms_wav_start;
 
@@ -119,10 +116,11 @@ XT_Wav_Class beep(beep_wav);
 XT_Wav_Class bloop(bloop_wav);
 XT_Wav_Class blip(blip_wav);
 XT_Wav_Class bleep(bleep_wav);
-XT_Wav_Class overheat(overheat_wav);
+XT_Wav_Class currentOnMsg(currentOn_wav);
+XT_Wav_Class overHeatMsg(overheat_wav);
 XT_Wav_Class increaseMsg(increaseMsg_wav);
 XT_Wav_Class decreaseMsg(decreaseMsg_wav);
-XT_Wav_Class silence50ms(silence100ms_wav);
+XT_Wav_Class silence100ms(silence100ms_wav);
 
 XT_Wav_Class n000(n000_wav);
 XT_Wav_Class n001(n001_wav);

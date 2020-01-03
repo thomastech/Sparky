@@ -1,21 +1,24 @@
 /*
    File: misc.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.0
+   Version: 1.1
    Creation: Sep-11-2019
-   Revised: Oct-24-2019
-   Release: Oct-30-2019
-   Author: T. Black
-   (c) copyright T. Black 2019, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
+   Revised: Dec-29-2019.
+   Public Release: Jan-03-2020
+   Revision History: See PulseWelder.cpp
+   Project Leader: T. Black (thomastech)
+   Contributors: thomastech, hogthrob
+
+   (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
  */
 
 #include <Arduino.h>
 #include <Wire.h>
-#include "config.h"
 #include "digPot.h"
 #include "PulseWelder.h"
 #include "XT_DAC_Audio.h"
+#include "config.h"
 
 // Global Audio Generation
 extern XT_DAC_Audio_Class DacAudio;
@@ -25,10 +28,13 @@ extern XT_Sequence_Class Sequence;
 
 // Global Wave Files.
 extern XT_Wav_Class increaseMsg;
+extern XT_Wav_Class currentOnMsg;
 extern XT_Wav_Class decreaseMsg;
-extern XT_Wav_Class silence50ms;
+extern XT_Wav_Class overHeatMsg;
+extern XT_Wav_Class silence100ms;
 extern XT_Wav_Class beep;
 extern XT_Wav_Class bleep;
+extern XT_Wav_Class ding;
 extern XT_Wav_Class n000;
 extern XT_Wav_Class n001;
 extern XT_Wav_Class n002;
@@ -47,6 +53,7 @@ extern int  Amps;            // Live Welding Current.
 extern byte arcSwitch;       // Welding Arc On/Off Switch.
 extern int  buttonClick;     // Bluetooth iTAG FOB Button click type, single or double click.
 extern int  fobClick;        // Bluetooth FOB Button Click Value.
+extern bool overTempAlert;   // Over Temperature (OC) Alert.
 extern bool newFobClick;     // Bluetooth FOB Button, new click.
 extern byte pulseAmpsPc;     // Arc modulation Background Current (%) for Pulse mode.
 extern byte pulseFreqX10;    // Pulse Frequency times ten.
@@ -92,9 +99,82 @@ void AddNumberToSequence(int theNumber)
       Sequence.AddPlayItem(&n009);
       break;
     default:
-      Sequence.AddPlayItem(&silence50ms); // Invalid arg! Say nothing.
+      Sequence.AddPlayItem(&silence100ms); // Invalid arg! Say nothing.
       break;
   }
+}
+
+// *********************************************************************************************
+// Check Welder's OC Led signal for alert condition. Could be over-heat or over-current state.
+void checkForAlerts(void)
+{
+    overTempAlert = !digitalRead(OC_PIN); // Get OC Warning LED State.
+    if(overTempAlert) {
+        arcSwitch = ARC_OFF;
+        disableArc(VERBOSE_OFF);         // Disable Arc current.
+    }
+}
+
+// *********************************************************************************************
+// Control Welding Arc Current.
+// state = ARC_ON or ARC_OFF
+// verbose = VERBOSE_ON (true) for expanded log messages, else VERBOSE_OFF (false) for less messages.
+void controlArc(bool state, bool verbose)
+{
+  if (state == ARC_ON)
+  {
+    enableArc(verbose);
+  }
+  else
+  {
+    disableArc(verbose);
+  }
+}
+
+// *********************************************************************************************
+// Disable the Arc current.
+// verbose = VERBOSE_ON (true) for expanded log messages, else VERBOSE_OFF (false) for less messages.
+// PWM Shutdown control option requires hardware mod; Lift SG3525A pin 10, connect it
+// to ESP32's SHDN_PIN (default is GPIO15)
+void disableArc(bool verbose)
+{
+  arcSwitch = ARC_OFF;
+
+  setPotAmps(ARC_OFF_AMPS, verbose); // Set Digital Pot to lowest welding current.
+
+  #ifdef PWM_ARC_CTRL
+   digitalWrite(SHDN_PIN, PWM_OFF);  // Disable PWM Controller.
+   if (verbose == VERBOSE_ON) {
+     Serial.println("Arc Current Turned Off (Disabled PWM Controller).");
+   }
+  #else
+   digitalWrite(SHDN_PIN, PWM_ON); // PWM feature disabled by config.h; Don't shutdown!
+   if (verbose == VERBOSE_ON) {
+     Serial.println("Arc Current Suppressed (Reduced to " + String(ARC_OFF_AMPS) + " Amps).");
+   }
+  #endif
+}
+
+// *********************************************************************************************
+// Enable the Arc current.
+// verbose = VERBOSE_ON (true) for expanded log messages, else VERBOSE_OFF (false) for less messages.
+// PWM Shutdown control option requires hardware mod; Lift SG3525A pin 10, connect ot
+// to ESP32's SHDN_PIN (default is GPIO15)
+void enableArc(bool verbose)
+{
+    if(overTempAlert) {
+        if (verbose == VERBOSE_ON) {
+            Serial.println("Arc Current Cannot be Turned On (Alarm State!)");
+        }
+    }
+    else {
+        arcSwitch = ARC_ON;
+        setPotAmps(setAmps, verbose); // Refresh Digital Pot.
+        digitalWrite(SHDN_PIN,PWM_ON);
+        if (verbose == VERBOSE_ON) {
+            Serial.println("Arc Current Turned On (" + String(setAmps) + " Amps).");
+        }
+    }
 }
 
 // *********************************************************************************************
@@ -139,59 +219,78 @@ void remoteControl(void)
       Sequence.AddPlayItem(&beep);
     }
 
-    if (click == CLICK_SINGLE) {
-      if (setAmps != MAX_SET_AMPS) {
-        if (setAmps <= MAX_SET_AMPS - REMOTE_AMP_CHG) {
-          setAmps += REMOTE_AMP_CHG;
+    if(overTempAlert){
+        Sequence.AddPlayItem(&currentOnMsg);
+        DacAudio.Play(&overHeatMsg, true);
+        Serial.println("Announce: Alarm");
+    }
+    else if(arcSwitch != ARC_ON) {
+        arcSwitch = ARC_ON;
+        drawHomePage();
+        if (spkrVolSwitch != VOL_OFF) {
+          Sequence.AddPlayItem(&silence100ms);
+          Sequence.AddPlayItem(&ding);
+          Sequence.AddPlayItem(&beep);
+          Sequence.AddPlayItem(&silence100ms);
+          Sequence.AddPlayItem(&currentOnMsg);
+          DacAudio.Play(&Sequence, true);
         }
-        else {
-          setAmps = MAX_SET_AMPS;
+        Serial.println("Announce: Arc Current Turned On.");
+    }
+    else {
+        if (click == CLICK_SINGLE) {
+            if (setAmps != MAX_SET_AMPS) {
+                if (setAmps <= MAX_SET_AMPS - REMOTE_AMP_CHG) {
+                    setAmps += REMOTE_AMP_CHG;
+                }
+                else {
+                    setAmps = MAX_SET_AMPS;
+                }
+
+                if (spkrVolSwitch != VOL_OFF) {
+                    Sequence.AddPlayItem(&increaseMsg);
+                }
+                Serial.print("Announce: Increase ");
+            }
+            else {
+                Serial.print("Announce <no change>:  ");
+            }
         }
+        else if (click == CLICK_DOUBLE) {
+            if (setAmps != MIN_SET_AMPS) {
+                if (setAmps >= MIN_SET_AMPS + REMOTE_AMP_CHG) {
+                    setAmps -= REMOTE_AMP_CHG;
+                }
+                else {
+                    setAmps = MIN_SET_AMPS;
+                }
+
+                if (spkrVolSwitch != VOL_OFF) {
+                    Sequence.AddPlayItem(&decreaseMsg);
+                }
+                Serial.print("Announce: Decrease ");
+            }
+            else {
+                Serial.print("Announce <no change>: ");
+            }
+        }
+
+        setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
+        amps100 = setAmps / 100;
+        amps10  = (setAmps - amps100 * 100) / 10;
+        amps1   = setAmps - (amps100 * 100 + amps10 * 10);
+
+        Serial.println(String(amps100) + "-" + String(amps10) + "-" + String(amps1));
+        setPotAmps(setAmps, VERBOSE_ON);           // Refresh Digital Pot.
 
         if (spkrVolSwitch != VOL_OFF) {
-          Sequence.AddPlayItem(&increaseMsg);
+            if (amps100 > 0) {                     // Suppress extraneous leading zero.
+                AddNumberToSequence(amps100);
+            }
+            AddNumberToSequence(amps10);
+            AddNumberToSequence(amps1);
+            DacAudio.Play(&Sequence, true);
         }
-        Serial.print("Announce: Increase ");
-      }
-      else {
-        Serial.print("Announce <no change>:  ");
-      }
-    }
-    else if (click == CLICK_DOUBLE) {
-      if (setAmps != MIN_SET_AMPS) {
-        if (setAmps >= MIN_SET_AMPS + REMOTE_AMP_CHG) {
-          setAmps -= REMOTE_AMP_CHG;
-        }
-        else {
-          setAmps = MIN_SET_AMPS;
-        }
-
-        if (spkrVolSwitch != VOL_OFF) {
-          Sequence.AddPlayItem(&decreaseMsg);
-        }
-        Serial.print("Announce: Decrease ");
-      }
-      else {
-        Serial.print("Announce <no change>: ");
-      }
-    }
-
-    setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-    amps100 = setAmps / 100;
-    amps10  = (setAmps - amps100 * 100) / 10;
-    amps1   = setAmps - (amps100 * 100 + amps10 * 10);
-
-    Serial.println(String(amps100) + "-" + String(amps10) + "-" + String(amps1));
-
-    setPotAmps(setAmps, POT_I2C_ADDR, true); // Refresh Digital Pot.
-
-    if (spkrVolSwitch != VOL_OFF) {
-      if (amps100 > 0) {                     // Suppress extraneous leading zero.
-        AddNumberToSequence(amps100);
-      }
-      AddNumberToSequence(amps10);
-      AddNumberToSequence(amps1);
-      DacAudio.Play(&Sequence, true);
     }
   }
 }
@@ -212,42 +311,50 @@ float PulseFreqHz(void)
 
 // *********************************************************************************************
 // Modulate the Welding Arc Current if Pulse Mode is Enabled.
-// Modulation is based on Frequency setting. Background current is 50% of Amps Setting.
+// Modulation freq is provided by PulseFreqHz() function (user's pulse frequency setting).
+// Pulse current is a percentage of Normal current (user setting pulseAmpsPc).
+// If measured rod arc current is too low the modulation is postponed (normal current is used).
+// On new rod strikes the pulse modulation is delayed to allow the arc to fully ignite.
 void pulseModulation(void)
 {
   int ampVal;
   static long previousMillis = 0;
+  static long arcTimer = 0;
   float period               = 0; // Pulse period.
 
-  if (pulseSwitch == PULSE_OFF) { // Pulse mode is disabled. Refresh Digital POT every 0.5Sec, exit.
-    if (millis() > previousMillis + 500) {
-      setPotAmps(setAmps, POT_I2C_ADDR, false);
-      previousMillis = millis();
+  if (arcSwitch == ARC_ON && pulseSwitch == PULSE_OFF) { // Pulse mode is disabled.
+    if (millis() > previousMillis + 500) {               // Refresh Digital POT every 0.5Sec.
+        previousMillis = millis();
+        arcTimer = millis();
+        setPotAmps(setAmps, VERBOSE_OFF);
     }
-    pulseState = true;                      // Arc current in On.
+    pulseState = false;                      // Pulsed current is Off.
   }
   else if (arcSwitch == ARC_ON) {
-    period = (1.0 / PulseFreqHz()) / 0.002; // Convert freq to mS/2.
-    // Serial.println("mS: " + String(period));  // Debug
+    period = (1.0 / PulseFreqHz()) / 0.002;  // Convert freq to mS/2.
+    // Serial.println("mS: " + String(period)); // Debug
 
     if (millis() > previousMillis + (long)(period)) {
-      previousMillis = millis();
-      pulseState     = !pulseState;
-      drawPulseLightning();                        // Update the Pulse Arc icon.
-
-      if (pulseState || (Amps < MIN_PULSE_AMPS)) { // Disable modulation if Welding current too low.
-        ampVal = setAmps;
-      }
-      else {
-        ampVal = (int)(setAmps) * pulseAmpsPc / 100; // Modulated with Pulse Current (%) Setting.
-      }
-
-      ampVal = constrain(ampVal, MIN_SET_AMPS, MAX_SET_AMPS);
-
-      //          Serial.println("Amps: " + String(setAmps) + ", bg: " + String(ampVal));  // Debug.
-      setPotAmps((byte)(ampVal), POT_I2C_ADDR, false);
+        previousMillis = millis();
+        pulseState = !pulseState;
+        drawPulseLightning();                // Update the Pulse Arc icon.
+        if(Amps < PULSE_AMPS_THRS) {         // Current too low, don't pulse modulate current.
+            arcTimer = millis();
+            setPotAmps(setAmps, VERBOSE_OFF);
+        }
+        else if(millis() > arcTimer+ ARC_STABLIZE_TM) { // Arc should be stabilized, OK to modulate.
+           if(pulseState == PULSE_ON) {      // Pulsed welding current cycle.
+                ampVal = (int)(setAmps) * pulseAmpsPc / 100; // Modulated with Pulse Current (%) Setting.
+                ampVal = constrain(ampVal, MIN_SET_AMPS, MAX_SET_AMPS);
+                setPotAmps((byte)(ampVal), VERBOSE_OFF);
+            }
+            else {                           // Normal welding current cycle.
+                setPotAmps(setAmps, VERBOSE_OFF);
+            }
+        }
     }
   }
+//  Serial.println("Amps: " + String(setAmps) + ", bg: " + String(ampVal));  // Debug.
 }
 
 // *********************************************************************************************

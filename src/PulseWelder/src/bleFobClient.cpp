@@ -1,20 +1,22 @@
 /*
    File: bleFobClient.cpp. Bluetooth Client for the FOB Button (https://ebay.to/2M150E0)
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.0
+   Version: 1.1
    Creation: Sep-11-2019
-   Revised: Oct-24-2019
-   Release: Oct-30-2019
-   Author: T. Black
-   (c) copyright T. Black 2019, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
-   Based on the library's BLE_Client.ino example.
+   Revised: Dec-29-2019.
+   Public Release: Jan-03-2020
+   Revision History: See PulseWelder.cpp
+   Project Leader: T. Black (thomastech)
+   Contributors: thomastech
+
+   (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
 
    IMPORTANT:
     The official Arduino BLE lib is buggy (crash and hang issues); I have patched it with custom code
     tweaks (do NOT use the official release). It's still not perfect, but is more stable. The patched
-    arduino BLE library has been copied into the project's libdeps folder:
-    <project base directory>/PulseWelder/.pio/libdeps/lolin_d32_pro/ESP32 BLE Arduino_ID1841/src
+    arduino BLE library has been copied into the project's /lib folder:
+    <project base directory>/PulseWelder/lib
 
     Supported BLE FOB Buttons (lost key finder device):
     1. iTAG. Service UUID 0xffe0. Teardrop shaped enclosure, 52mm long.
@@ -24,9 +26,9 @@
 
 #include <Arduino.h>
 #include <string.h>
-#include <BLEDevice.h>
 #include "PulseWelder.h"
 #include "XT_DAC_Audio.h"
+#include "config.h"
 
 // Global Audio Generation
 extern XT_DAC_Audio_Class  DacAudio;
@@ -79,7 +81,7 @@ static void notifyCallback(
   unsigned int byteCount   = 0;
   static long  clickMillis = 0;
 
-  // Verbose messages are useful for developing code to new button devices.
+  // The Serial log messages are useful for developing code to new Key FOB button devices.
   if (isNotify) {
     Serial.print("BLE Notify ");
   }
@@ -123,7 +125,7 @@ static void notifyCallback(
     Serial.println();
   }
 
-  Serial.println("BLE FreeHeap: " + String(ESP.getFreeHeap()) + " bytes"); // Monitor the Mem Leaks.
+  Serial.println("BLE FreeHeap: " + String(ESP.getFreeHeap()) + " bytes."); // Monitor the Mem Leaks.
 
   if (validPress && !newFobClick && (millis() >= clickMillis + DOUBLE_CLICK_TIME)) {
     newFobClick = true;
@@ -327,7 +329,7 @@ void setupBle(unsigned int scanSeconds)
 {
   BLEScan *pBLEScan = nullptr; // Singleton object, never release/delete it.
 
-  Serial.println("Starting BLE Client application ...");
+  Serial.println("Starting BLE Client Application ...");
   BLEDevice::init("");         // init() has built-in safeguard to ensure it is only initialized once.
 
 // Retrieve a scanned device and set the callback we want to use to be informed when we

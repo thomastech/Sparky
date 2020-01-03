@@ -1,13 +1,49 @@
 /*
    File: PulseWelder.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.0
+   Version: 1.1
    Creation: Sep-11-2019
-   Revised: Oct-24-2019
-   Release: Oct-30-2019
-   Author: T. Black
-   (c) copyright T. Black 2019, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
+   Revised: Dec-29-2019.
+   Public Release: Jan-03-2020
+   Project Leader: T. Black (thomastech)
+   Contributors: thomastech, hogthrob
+
+   (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
+
+   Revision History:
+   V1.0, Oct-30-2019: Initial public release by thomastech.
+   v1.1, Jan-03-2020:
+    - Moved customized ESP32_BLE and INA219 libraries to /lib folder (removed from /.pio/libdeps/lolin_d32_pro folder).
+    - Revised platformio.ini, lib_deps section now has current stable release snapshots:
+        Adafruit GFX Library = V1.7.3
+        Adafruit ILI9341 = V1.5.3
+        XPT2046_Touchscreen = build 26b691b2c8
+    - Updated config.h (User Preference Settings):
+        Added more build settings to further customize Sparky.
+        Added pre-processor error testing to detect unusual config entries.
+    - Added new Remote Key FOB feature:
+        If Arc current is turned off the Remote FOB can now turn it back on with FOB button press.
+    - Updated Over-Heat alarm (sensed front panel's OC LED):
+        Improved screen handling of alert.
+        Prevent user from changing some touchscreen entries during the alert.
+        Prevent Key FOB from altering settings during alert state. Voice announce alert message instead.
+    - Updated harware failure boot actions (bad current sensor or digital pot):
+        Prevent Key FOB from changing current.
+        Halt all operation after posting Hardware Failure screen.
+    - Updated Arc Pulse Mode:
+        Pulse modulated current is momentarily delayed at each new rod strike to allow arc stabilization.
+        Added PULSE_AMPS_THRS to config.h. This sets the minimum rod current before pulse modulation is allowed.
+    - Added hogthrob's PR #1, https://github.com/thomastech/Sparky/pull/1
+        MCP41HV51 chip support. Code will autodetect if there is a MCP45HV51 connected via I2C or a MCP41HV51 via SPI.
+        MCP41HV51 uses GPIO26 for CS and the normal MISO/MOSI/SCLK lines (same as touchscreen and display).
+    - Added hogthrob's PR #2, https://github.com/thomastech/Sparky/pull/2
+        Correction to ina219.configure() calling parameters.
+        New user option for enabling 32-sample INA219 shunt averaging (hardware avg) in config.h. Enabled by Default.
+    - Added hogthrob's PWM Controller Shutdown function (Optional Feature).
+        Lift PIN-10 on SG3525A PWM Controller IC. Connect lifted pin to ESP32's SHDN_PIN (default is ESP32 GPIO-15).
+        PWM Shutdown feature must be enabled in config.h (via PWM_ARC_CTRL define).
+    - Added hogthrob's checkAndUpdateEEPROM() function & IS_IN_BOX() macro to streamline screen.cpp code.
 
    Notes:
    1. This "Arduino" project must be compiled with VSCode / Platformio. Do not use the Arduino IDE.
@@ -16,8 +52,9 @@
       power measurements are not available.
    4. MUST remove the existing shunt resistor on the Adafruit/clone INA219 PCB. See project documentation.
    5. Future Feature Wishlist Ideas (not implemented):
-      Hot Start (anti-stick): Auto-Increase current during arc starts.
-      Arc Force (Dig): Auto-Increase current during voltage sags.
+      Anti-Stick: Severely reduce output current if low weld voltage occurs for a prolonged period.
+      Arc Force (Dig): Proportionly increase output current during voltage sags.
+      Hot Start: Momemtarily increase output current during arc starts. Typical period is 0.5S.
  */
 
 #include <Arduino.h>
@@ -52,6 +89,7 @@ byte pulseFreqX10     = DEF_SET_FRQ_X10;    // Arc modulation frequency for Puls
 byte pulseAmpsPc      = DEF_SET_PULSE_AMPS; // Arc modulation Background Current (%) for Pulse mode.
 byte setAmps          = DEF_SET_AMPS;       // Default Welding Amps *User Setting*.
 bool setAmpsTimerFlag = false;              // Flag, User has Changed Amps Setting.
+bool spiInitComplete  = false;              // SPI Port Initialization is Complete flag.
 byte spkrVolSwitch    = DEF_SET_VOL;        // Audio Volume, five levels.
 byte systemError      = ERROR_NONE;         // General hardware error state (bad current sensor or bad Digital Pot).
 unsigned int Volts    = 0;                  // Measured Welding Volts.
@@ -62,14 +100,17 @@ void setup()
 {
   static long currentMillis = 0;
 
-  delay(500);               // Allow power to stabilize.
-  WiFi.mode(WIFI_OFF);      // Disable WiFi, Not Used. Bluetooth not affected.
-  Serial.begin(BAUD_RATE);  // Use User Config baud rate for Serial Log Messages.
+  delay(500);                   // Allow power to stabilize.
+  WiFi.mode(WIFI_OFF);          // Disable WiFi, Not Used. Bluetooth not affected.
+  Serial.begin(BAUD_RATE);      // Use User Config baud rate for Serial Log Messages.
 
-  pinMode( TFT_CS, OUTPUT); // TFT Select Output
-  pinMode(LED_PIN, OUTPUT); // LED Output
-  pinMode( OC_PIN, INPUT);  // Over Current Input. This pin does not support internal pullups.
-  digitalWrite(LED_PIN, LED_ON);
+  pinMode(  TFT_CS, OUTPUT);    // TFT Select, Output
+  pinMode( LED_PIN, OUTPUT);    // LED Drive, Output
+  pinMode(  OC_PIN, INPUT);     // Front Panel OC Warning LED, Input. This pin does not support internal pullups.
+  pinMode(SHDN_PIN, OUTPUT);    // PWM Shutdown, Output
+
+  digitalWrite( LED_PIN, LED_ON);
+  digitalWrite(SHDN_PIN, HIGH); // Disable the PWM Controller.
 
   //  pinMode(DEBUG_PIN, OUTPUT); // Debug Test Output
   //  digitalWrite(DEBUG_PIN, 0);
@@ -137,7 +178,7 @@ void setup()
     bleSwitch = constrain(bleSwitch, BLE_OFF, BLE_ON);
 
     pulseAmpsPc = EEPROM.read(PULSE_AMPS_ADDR);
-    pulseAmpsPc = constrain(pulseAmpsPc, MIN_PULSE_AMPS, MAX_PULSE_AMPS);
+    pulseAmpsPc = constrain(pulseAmpsPc, MIN_PULSE_AMPS_PC, MAX_PULSE_AMPS_PC);
 
     Serial.println("Restored settings from EEPROM.");
     Serial.println(            " -> Welding Amps: " + String(setAmps) + "A");
@@ -159,21 +200,12 @@ void setup()
   }
 
   // Setup Digital Pot. Must setup INA219 before the Digital Pot due to the shared i2c.
-  if (initDigitalPot(POT_I2C_ADDR) == false) {
+  if (initDigitalPot(POT_I2C_ADDR, POT_CS) == false) {
     systemError |= ERROR_DIGPOT;
   }
 
-#ifdef DEMO_MODE
-  systemError = ERROR_NONE; // Clear hardware error codes (if any) when in Demo Mode.
-#endif // ifdef DEMO_MODE
-
-  // Set Welding Current (Digital Pot).
-  if (arcSwitch == ARC_ON) {
-    setPotAmps(setAmps, POT_I2C_ADDR, true);
-  }
-  else {
-    setPotAmps(SET_AMPS_DISABLE, POT_I2C_ADDR, true);
-  }
+  // Set Arc Weld Current (Update Digital Pot and PWM Control pin).
+  controlArc(arcSwitch, VERBOSE_ON);
 
   // Init SPIFFS (SPIFFS is not used in this project).
   // spiffsInit();
@@ -205,18 +237,31 @@ void setup()
   }
   Serial.println("Initialized Audio Playback System.");
 
+ // Welcome the user with a promotional voice message.
   if (spkrVolSwitch != VOL_OFF) {
-    DacAudio.Play(&promoMsg, true); // Welcome the user with a short promotional message.
+    DacAudio.Play(&promoMsg, true);
   }
 
-  // Done with initialization. Show home Page and announce "promo" message.
-  if (systemError == ERROR_NONE) {
+  // Done with initialization. Show Home Page or Hardware Error Page.
+  if (systemError == ERROR_NONE) {  // Hardware is OK.
     drawHomePage();
-    Serial.println("System Initialization Complete.");
+    Serial.println("System Initialization Complete: Success!");
   }
-  else {
-    drawErrorPage();
-    Serial.println("System Initialization Complete, Hardware Fails.");
+  else {                              // Hardware Problem!
+    pulseSwitch = PULSE_OFF;
+    disableArc(VERBOSE_ON);           // Turn Off PWM controller IC.
+    setPotAmps(MIN_AMPS, VERBOSE_ON); // Minimize Amps even if Digital POT is non-functional.
+    #ifdef DEMO_MODE
+     Serial.println("System Warning: Operating in Demo Mode; Do NOT attempt to weld.");
+     drawHomePage();
+    #else
+     Serial.println("System Hardware Fails! Repair needed; Do NOT attempt to weld.");
+     drawErrorPage();                 // Post Hardware Failure Screen.
+     Serial.flush();
+     while(true) {                    // HALT the welder using infinite loop.
+        showHeartbeat();              // Flash Red Caution Icon.
+     }
+    #endif
   }
   Serial.flush();
 }
@@ -231,7 +276,6 @@ void loop()
 
   // Housekeeping.
   currentMillis = millis();
-  overTempAlert = !digitalRead(OC_PIN); // Get Over-Temperature Signal.
 
   // System Tick Timers Tasks
   if (currentMillis - previousMeasMillis >= MEAS_TIME) {
@@ -248,6 +292,7 @@ void loop()
   // Background tasks
   DacAudio.FillBuffer(); // Fill the sound buffer with data.
   showHeartbeat();       // Display Flashing Heartbeat icon.
+  checkForAlerts();      // Check for alert conditions.
   processScreen();       // Process Menu System (touch screen).
   pulseModulation();     // Update the Arc Pulse Current if pulse mode is enabled.
   remoteControl();       // Check the BLE FOB remote control for button presses.

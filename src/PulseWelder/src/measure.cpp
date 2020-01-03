@@ -1,25 +1,29 @@
 /*
    File: measure.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.0
+   Version: 1.1
    Creation: Sep-11-2019
-   Revised: Oct-24-2019
-   Release: Oct-30-2019
-   Author: T. Black
-   (c) copyright T. Black 2019, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
+   Revised: Dec-29-2019.
+   Public Release: Jan-03-2020
+   Revision History: See PulseWelder.cpp
+   Project Leader: T. Black (thomastech)
+   Contributors: thomastech, hogthrob
+
+   (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
 
    Notes:
-   1. The INA219 library is custom patched; It has been modified for use with this project.
+   1. The INA219 library is custom patched; It has been modified for use with the Sparky project.
    2. The INA219 "High-Side" current sensor is being used in a Low-side configuration. Therefore Bus voltage and
     power measurements are not available.
  */
 
 #include <Arduino.h>
 #include <driver/adc.h>
-#include "esp_adc_cal.h"
-#include "PulseWelder.h"
+#include <esp_adc_cal.h>
 #include "INA219.h"
+#include "PulseWelder.h"
+#include "config.h"
 
 #define I_AVG_SIZE 16                         // Size of Welder Amps data averaging buffer.
 #define E_AVG_SIZE 16                         // Size of Welder VDC data averaging buffer.
@@ -56,10 +60,16 @@ bool initCurrentSensor(void)
     success = false;
   }
   else {
-    Serial.println("Initialized INA219 Current Sensor at Address 0x" + String(INA219_ADDR, HEX) + ".");
+    Serial.print("Initialized INA219 Current Sensor at Address 0x" + String(INA219_ADDR, HEX));
     delay(1);
     ina219.reset();
-    ina219.configure(BUS_RANGE_16V, PGA_RANGE_160MV, SAMPLE_AVG_128, CONTINUOS_OP); // Note: 68mS Sample Time!
+    #ifdef INA219_AVG_ON
+     ina219.configure(BUS_RANGE_16V, PGA_RANGE_160MV, SAMPLE_9BITS, SAMPLE_AVG_32, CONTINUOUS_OP_NO_VDC); // 17mS Acq.
+     Serial.println(" (using 32-sample hardware averaging).");
+    #else
+     ina219.configure(BUS_RANGE_16V, PGA_RANGE_160MV, SAMPLE_9BITS, SAMPLE_12BITS, CONTINUOUS_OP_NO_VDC); // 532uS Acq.
+     Serial.println(" (not using hardware averaging).");
+    #endif
     ina219.calibrate(SHUNT_OHMS, SHUNT_V_MAX, BUS_V_MAX, MAX_I_EXPECTED);
     success = true;
   }

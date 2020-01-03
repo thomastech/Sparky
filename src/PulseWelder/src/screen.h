@@ -1,12 +1,15 @@
 /*
    File: screen.h
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.0
+   Version: 1.1
    Creation: Sep-11-2019
-   Revised: Oct-24-2019
-   Release: Oct-30-2019
-   Author: T. Black
-   (c) copyright T. Black 2019, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
+   Revised: Dec-29-2019.
+   Public Release: Jan-03-2020
+   Revision History: See PulseWelder.cpp
+   Project Leader: T. Black (thomastech)
+   Contributors: thomastech, hogthrob
+
+   (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
  */
 
@@ -82,8 +85,8 @@
 #define FBBOX_H 40
 #define FBBOX_R 3
 
-#define BOBOX_X 20 // Bluetooth On/Off Button Box area X
-#define BOBOX_Y 112
+#define BOBOX_X 250 // Bluetooth On/Off Button Box area X
+#define BOBOX_Y 165
 #define BOBOX_W 50
 #define BOBOX_H 40
 #define BOBOX_R 3
@@ -112,6 +115,17 @@
 #define PSBOX_H 40
 #define PSBOX_R 3
 
+#define RTNBOX_X 0 // Return Button Box area X
+#define RTNBOX_Y 0
+#define RTNBOX_W SCREEN_W
+#define RTNBOX_H 50
+#define RTNBOX_R 3
+
+#define SCREEN_X 0 // Full Screen Box Area x
+#define SCREEN_Y 0
+#define SCREEN_W (tft.width() - 1)
+#define SCREEN_H (tft.height() - 1)
+
 #define SETBOX_X 10 // Settings Button Box area X
 #define SETBOX_Y 179
 #define SETBOX_W 46
@@ -134,12 +148,12 @@
 #define BATTERY_Y 220 // Battery Icon Y Location
 #define BATTERY_W 22  // Battery Icon Width
 #define BATTERY_H 10  // Battery Icon Height
+
 #define CAUTION_X 270 // Caution Icon X Location
 #define CAUTION_Y 190 // Caution Icon Y Location
+
 #define HEART_X 295   // Heart Icon X Location
 #define HEART_Y 218   // Heart Icon Y Location
-#define SCREEN_W (tft.width() - 1)
-#define SCREEN_H (tft.height() - 1)
 
 // Touchscreen Definitions
 #define TS_MINX 3800 // Calibration points for touchscreen
