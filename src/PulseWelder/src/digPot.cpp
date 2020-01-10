@@ -70,6 +70,7 @@ static bool initDigitalPotShared(void)
 bool initDigitalPotSPI(uint8_t csPinPot)
 {
   csPin    = csPinPot;
+  chipAddr = 0; 
 
   pinMode(csPin, OUTPUT);
   digitalWrite(csPin, HIGH);
