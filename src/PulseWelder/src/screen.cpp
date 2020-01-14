@@ -776,7 +776,7 @@ void displayAmps(bool forceRefresh)
       oldAmps = Amps;
     }
   }
-  else
+  else 
   {
     oldAmps = -1; // Force burn current refresh on next rod burn.
 
@@ -986,6 +986,12 @@ void drawInfoPage(void)
 {
   drawSubPage("ROD INFORMATION", PG_INFO, ILI9341_BLACK, ILI9341_WHITE);
 
+// *********************************************************************************************
+// Information page.
+void drawInfoPage(void)
+{
+  drawSubPage("ROD INFORMATION", PG_INFO, ILI9341_BLACK, ILI9341_WHITE);
+ 
   tft.setFont(&FreeSans12pt7b);
   tft.setTextSize(1);
   tft.setTextColor(ILI9341_YELLOW);
@@ -1202,7 +1208,6 @@ void drawHomePage()
 
   unsigned int color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
   drawPageFrame(color, ILI9341_CYAN);
-
   drawAmpsBox();
   displayOverTempAlert(); // Display temperature warning if too hot.
 
@@ -1402,7 +1407,6 @@ void showBleStatus(int msgNumber)
 
   // Update Bluetooth On/Off Switch button
   tft.drawBitmap(FBBOX_X + FBBOX_W + 17, FBBOX_Y, PowerSwBitmap, 40, 40, bleSwitch == BLE_OFF ? ILI9341_RED : ILI9341_GREEN);
-
 }
 
 // *********************************************************************************************

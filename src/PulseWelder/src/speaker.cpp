@@ -56,7 +56,6 @@ Speaker::Speaker() {
     promoMsg.Volume    = 127;           // Maximum Sub-Volume (0-127 allowed).
     Sequence.Volume = 127;         // Maximum sub-volume.
     Sequence.Repeat = 0;           // Don't Repeat.
-
 }
 void Speaker::stopSounds() {
   DacAudio.StopAllSounds();
