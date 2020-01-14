@@ -42,7 +42,7 @@
 #include <Arduino.h>
 
 
-INA219::INA219() {
+INA219::INA219(): last_addr(-1) {
 }
 
 
@@ -51,6 +51,7 @@ void INA219::begin(uint8_t addr)
   Wire.begin();
   i2c_address = addr;
   gain = D_GAIN;
+  last_addr = -1;
 }
 
 
@@ -118,6 +119,7 @@ void INA219::configure(uint8_t range, uint8_t gain, uint8_t bus_adc, uint8_t shu
 void INA219::reset()
 {
   write16(CONFIG_R, INA_RESET);
+  last_addr = -1;
   delay(2);  // Now using Arduino library mS delay. Mod by TEB, Sep-17-2019.
 }
 
@@ -174,6 +176,7 @@ void INA219::write16(uint8_t a, uint16_t d) {
   temp = (uint8_t)d;
   d >>= 8;
   Wire.beginTransmission(i2c_address); // start transmission to device
+  last_addr = a;
 
   #if ARDUINO >= 100
     Wire.write(a); // sends register address to read from
@@ -186,15 +189,16 @@ void INA219::write16(uint8_t a, uint16_t d) {
   #endif
 
   Wire.endTransmission(); // end transmission
-  delay(1);
 }
 
 
 int16_t INA219::read16(uint8_t a) {
   uint16_t ret;
 
-  // move the pointer to reg. of interest, null argument
-  write16(a, 0);
+  if (last_addr != a) {
+    // move the pointer to reg. of interest, null argument
+    write16(a, 0);
+  }
 
   Wire.requestFrom((int)i2c_address, 2);	// request 2 data bytes
 

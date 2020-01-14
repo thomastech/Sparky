@@ -120,6 +120,8 @@ class INA219
 	int16_t read16(uint8_t addr);
 	void write16(uint8_t addr, uint16_t data);
 
+	int last_addr;
+
 };
 
 #endif
