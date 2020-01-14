@@ -17,9 +17,9 @@
 #include <EEPROM.h>
 #include "PulseWelder.h"
 #include "screen.h"
-#include "XT_DAC_Audio.h"
 #include "digPot.h"
 #include "config.h"
+#include "speaker.h"
 
 // Touch Screen
 extern XPT2046_Touchscreen ts;
@@ -41,43 +41,14 @@ extern byte spkrVolSwitch;    // Audio Volume, five levels.
 extern byte systemError;      // Captures General hardware errors (bad current sensor or bad Digital Pot).
 extern unsigned int Volts;    // Live Welding Volts.
 
-// Global Audio Generation
-extern XT_DAC_Audio_Class DacAudio;
 
-// Global Wave Files.
-extern XT_Wav_Class beep;
-extern XT_Wav_Class blip;
-extern XT_Wav_Class bleep;
-extern XT_Wav_Class bloop;
-extern XT_Wav_Class ding;
-extern XT_Wav_Class hello_voice;
-extern XT_Wav_Class overHeatMsg;
-extern XT_Wav_Class n000;
-extern XT_Wav_Class n001;
-extern XT_Wav_Class n002;
-extern XT_Wav_Class n003;
-extern XT_Wav_Class n004;
-extern XT_Wav_Class n005;
-extern XT_Wav_Class n006;
-extern XT_Wav_Class n007;
-extern XT_Wav_Class n008;
-extern XT_Wav_Class n009;
-extern XT_Wav_Class n010;
-
-// Global Music Audio Generation
-extern XT_MusicScore_Class highBeep;
-extern XT_MusicScore_Class lowBeep;
-
-// Global Audio Sequencer
-extern XT_Sequence_Class Sequence;
 
 // local Scope Vars
 static char StringBuff[32];          // General purpose Char Buffer
 static bool eepromActive = false;    // EEProm Write Requested.
 static int  page = PG_HOME;          // Current Menu Page.
 static int  x, y;                    // Screen's Touch coordinates.
-static long infoAbortMillis     = 0; // Info Page Abort Timer, in mS.
-static long SettingsAbortMillis = 0; // Settings Page abort time.
+static long abortMillis     = 0; // Info Page Abort Timer, in mS.
 static long previousEepMillis   = 0; // Previous Home Page time.
 
 #define COORD(BOXNAME) BOXNAME ## _X , BOXNAME ## _Y , BOXNAME ## _W , BOXNAME ## _H
@@ -111,7 +82,7 @@ bool adjustPulseAmps(bool direction)
   }
 
   // Refresh the Pulse Entry display (if on page PG_SET)
-  drawPulseAmpsSettings();
+  drawPulseAmpsSettings(true);
 
   // Let the caller know that we would like to update the EEPROM if the value has changed.
   eepromActive      = true;     // Request EEPROM save for new settings.
@@ -144,21 +115,16 @@ bool adjustPulseFreq(bool direction)
   }
 
   // Check for out of bounds values. Constrain in necessary.
-  if (pulseFreqX10 > MAX_PULSE_FRQ_X10) {
-    pulseFreqX10 = MAX_PULSE_FRQ_X10;
-    limitHit     = true;
-  }
-  else if (pulseFreqX10 < MIN_PULSE_FRQ_X10) {
-    pulseFreqX10 = MIN_PULSE_FRQ_X10;
-    limitHit     = true;
-  }
-  else if ((pulseFreqX10 < MIN_PULSE_FRQ_X10) || (pulseFreqX10 > MAX_PULSE_FRQ_X10)) {
-    pulseFreqX10 = DEF_SET_FRQ_X10;
-    limitHit     = true;
-  }
-
+  byte constrainedPulseFreqX10 = constrain(pulseFreqX10, MIN_PULSE_FRQ_X10, MAX_PULSE_FRQ_X10);
+  
+  limitHit = constrainedPulseFreqX10 != pulseFreqX10;
+  // if constrained freq is not equal original frequency we are out of bounds
+  
+  pulseFreqX10 = constrainedPulseFreqX10;
+  // always use constrained frequency
+  
   // Refresh the Pulse Entry display (if on page PG_SET)
-  drawPulseHzSettings();
+  drawPulseHzSettings(true);
 
   // Let the caller know that we would like to update the EEPROM if the value has changed.
   eepromActive      = true;     // Request EEPROM save for new settings.
@@ -235,36 +201,115 @@ bool isInBox(int x, int y, int bx, int by, int bw, int bh)
 }
 
 // *********************************************************************************************
+// Get global x,y touch points and map to screen pixels.
+void getTouchPoints(void)
+{
+  TS_Point p = ts.getPoint();
+
+  //    Serial.println("raw X:" + String(p.x) + " raw Y:" + String(p.y));
+  x = map(p.x, TS_MINX, TS_MAXX, SCREEN_W, 0);
+  y = map(p.y, TS_MINY, TS_MAXY, SCREEN_H, 0);
+  Serial.println("[Touch Coordinates] X: " + String(x) + "  Y:" + String(y));
+}
+
+void drawCenteredText(int x, int y, int w, int h, String label, uint32_t bgcolor) 
+{
+  int16_t lx,ly;
+  uint16_t lw, lh;
+  
+  // calculate text length
+  tft.getTextBounds(label, x , y , &lx,  &ly, &lw, &lh);
+  int nxd = (w - lw)/2; // calculate offset from left margin to print label centered
+  tft.fillRect(x, y, w, h, bgcolor); // Erase Data Area for value refresh.
+
+  tft.setCursor(x + nxd, y + (lh + h)/2 );
+  tft.println(label);
+}
+
+void drawBasicButton(int x, int y, int w, int h, uint color) 
+{
+  tft.drawRoundRect(x - 2, y - 4, w+4, h + 8, 5, color);
+  tft.drawRoundRect(x - 1, y - 3, w+2, h + 6, 5, color);
+}
+
+void drawPlusMinusButtons(int x, int y, int w, int h, String label, bool update_only) 
+{
+  tft.setFont(&FreeSansBold12pt7b);
+  tft.setTextSize(1);
+  tft.setTextColor(ILI9341_BLACK);
+  drawCenteredText(x+45, y, w-90, h, label, ILI9341_WHITE);
+
+  if (update_only == false) {
+    drawBasicButton( x, y , w, h, ILI9341_BLACK);
+    tft.drawBitmap(x + 5, y , ButtonLtBitmap, 40, 40, ILI9341_BLUE);
+    tft.drawBitmap((x + w - 5 - 40), y , ButtonRtBitmap, 40, 40, ILI9341_BLUE);
+  }
+}
+
+
+void handleRodInfoPage(String rodName, bool& wasTouched)
+{
+  if (!ts.touched())
+  {
+    wasTouched = false;
+
+    if (millis() > abortMillis + PG_RD_TIME_MS)
+    {
+      Serial.println(rodName + " Info page timeout, exit.");
+      abortMillis = millis();// Reset the info page's keypress abort timer.
+      drawInfoPage();
+
+      spkr.lowBeep();
+    }
+  }
+  else if (ts.touched() && !wasTouched)
+  {
+    abortMillis = millis();
+    wasTouched      = true;
+    getTouchPoints();
+
+    if (IS_IN_BOX(SCREEN))// Press anywhere on screen to main info page.
+    {
+      Serial.println(String("User Exit ") + rodName +  " Info, returned to main info page");
+      abortMillis = millis();
+      drawInfoPage();
+
+      spkr.lowBeep();
+    }
+  }
+}
+
+// *********************************************************************************************
 // Process the TouchScreen actions.
 // Display screen pages, get touch inputs, perform actions.
 // All screens and touch events are performed here.
 void processScreen(void)
 {
-  bool limitHit                  = false;          // Control reached end of travel.
-  static bool setAmpsActive      = false;          // Amps Setting flag.
-  long bleWaitMillis             = millis();       // BLE Scan Timer.
-  static bool wasTouched         = false;          // Touch Display has detected a press.
-  static int  repeatCnt          = 0;              // Threshold counter for held keypress.
-  static int  repeatms           = REPEAT_SLOW_MS; // Millisecond delay for held keypress.
-  static long arrowMillis        = 0;              // Timer for held Up/Down Arrow key repeat feature.
-  static long dbncMillis         = 0;              // Touch Screen debouce timer.
-  static long homeMillis         = 0;              // Home Page timer for data refresh.
-  static long previousHomeMillis = 0;              // Previous Home Page timer.
-  static long setAmpsTimer       = 0;              // Amps setting changed by user timer, for Amps refresh.
+  bool limitHit                  = false;         // Control reached end of travel.
+  static bool setAmpsActive      = false;         // Amps Setting flag.
+  long bleWaitMillis             = millis();      // BLE Scan Timer.
+  static bool wasTouched         = false;         // Touch Display has detected a press.
+  static int  repeatCnt          = 0;             // Threshold counter for held keypress.
+  static int  repeatms           = REPEAT_SLOW_MS;// Millisecond delay for held keypress.
+  static long arrowMillis        = 0;             // Timer for held Up/Down Arrow key repeat feature.
+  static long dbncMillis         = 0;             // Touch Screen debouce timer.
+  static long homeMillis         = 0;             // Home Page timer for data refresh.
+  static long previousHomeMillis = 0;             // Previous Home Page timer.
+  static long setAmpsTimer       = 0;             // Amps setting changed by user timer, for Amps refresh.
 
   if (eepromActive)
   {
     if (millis() - previousEepMillis >= EEP_DELAY_TIME) {
-      eepromActive = false;                       // Reset EEProm write check Flag.
+      eepromActive  = false;// Reset EEProm write check Flag.
       eepromActive |= checkAndUpdateEEPROM(AMP_SET_ADDR, setAmps, "Amp Setting");
       eepromActive |= checkAndUpdateEEPROM(VOL_SET_ADDR, spkrVolSwitch, "Volume");
       eepromActive |= checkAndUpdateEEPROM(PULSE_FRQ_ADDR, pulseFreqX10, "Pulse Freq", (String(PulseFreqHz(), 1) + String(" Hz")).c_str());
       eepromActive |= checkAndUpdateEEPROM(PULSE_AMPS_ADDR, pulseAmpsPc, "Pulse Modulation Current", (String(pulseAmpsPc) + "%").c_str());
-      eepromActive |= checkAndUpdateEEPROM(PULSE_SW_ADDR, pulseSwitch, "Pulse Mode", pulseSwitch == PULSE_ON ? "On": "Off");
-      eepromActive |= checkAndUpdateEEPROM(ARC_SW_ADDR, arcSwitch, "Arc Power", arcSwitch == ARC_ON ? "On": "Off");
-      eepromActive |= checkAndUpdateEEPROM(BLE_SW_ADDR, bleSwitch, "Bluetooth", bleSwitch == PULSE_ON ? "On": "Off");
+      eepromActive |= checkAndUpdateEEPROM(PULSE_SW_ADDR, pulseSwitch, "Pulse Mode", pulseSwitch == PULSE_ON ? "On" : "Off");
+      eepromActive |= checkAndUpdateEEPROM(ARC_SW_ADDR, arcSwitch, "Arc Power", arcSwitch == ARC_ON ? "On" : "Off");
+      eepromActive |= checkAndUpdateEEPROM(BLE_SW_ADDR, bleSwitch, "Bluetooth", bleSwitch == PULSE_ON ? "On" : "Off");
 
-      if (eepromActive) { // New data available to write. Commit it to the flash.
+      if (eepromActive) {// New data available to write. Commit it to the flash.
         eepromActive = false;
         EEPROM.commit();
       }
@@ -272,20 +317,20 @@ void processScreen(void)
   }
 
   if (page == PG_HOME)
-  { // Home page.
+  {// Home page.
     homeMillis = millis();
 
     if (homeMillis - previousHomeMillis >= DATA_REFRESH_TIME) {
       previousHomeMillis = homeMillis;
 
       // drawBattery(BATTERY_X, BATTERY_Y);
-      displayOverTempAlert(); // Display temperature warning if too hot.
+      displayOverTempAlert();// Display temperature warning if too hot.
       displayAmps(false);
       displayVolts(false);
     }
 
     if ((setAmpsTimerFlag == true) && (homeMillis >= setAmpsTimer + SET_AMPS_TIME)) {
-      setAmpsTimerFlag = false; // Amps setting (by user) timer has expired.
+      setAmpsTimerFlag = false;// Amps setting (by user) timer has expired.
     }
 
     if (!ts.touched() && wasTouched && (homeMillis > dbncMillis + TOUCH_DBNC)) {
@@ -293,10 +338,10 @@ void processScreen(void)
       setAmpsActive = false;
     }
     else if (!ts.touched()) {
-      repeatCnt = 0;                        // Event counter for when key press is held.
-      repeatms  = REPEAT_SLOW_MS;           // Init to slow time delay on held key press, in mS.
+      repeatCnt = 0;                       // Event counter for when key press is held.
+      repeatms  = REPEAT_SLOW_MS;          // Init to slow time delay on held key press, in mS.
     }
-    else if (ts.touched() && !wasTouched) { // Debounce the touchscreen to prevents multiple inputs from single touch.
+    else if (ts.touched() && !wasTouched) {// Debounce the touchscreen to prevents multiple inputs from single touch.
       dbncMillis = millis();
 
       wasTouched = true;
@@ -304,33 +349,27 @@ void processScreen(void)
 
       if (IS_IN_BOX(ARCBOX))
       {
-        if(overTempAlert) {   // Alarm state. Do not enable welding current!
-            arcSwitch = ARC_OFF;
-            Serial.println("Alarm State! Arc Current Cannot be Enabled.");
-            if (spkrVolSwitch != VOL_OFF) {
-                DacAudio.Play(&bloop, true);
-            }
+        if (overTempAlert) {// Alarm state. Do not enable welding current!
+          arcSwitch = ARC_OFF;
+          Serial.println("Alarm State! Arc Current Cannot be Enabled.");
+          spkr.bloop();
         }
         else {
-            controlArc(arcSwitch == ARC_ON ? ARC_OFF : ARC_ON, VERBOSE_ON); // Toggle arcSwitch, Update Arc current on/off.
-            drawHomePage();
+          controlArc(arcSwitch == ARC_ON ? ARC_OFF : ARC_ON, VERBOSE_ON);// Toggle arcSwitch, Update Arc current on/off.
+          drawHomePage();
 
-            if (arcSwitch == ARC_ON) {
-                if (spkrVolSwitch != VOL_OFF) {
-                    DacAudio.Play(&highBeep, true);
-                }
-            }
-            else {
-                if (spkrVolSwitch != VOL_OFF) {
-                    DacAudio.Play(&lowBeep, true);
-                }
-            }
-            previousEepMillis = millis();
-            eepromActive      = true; // Request EEProm Write after timer expiry.
+          if (arcSwitch == ARC_ON) {
+            spkr.highBeep();
+          }
+          else {
+            spkr.lowBeep();
+          }
+          previousEepMillis = millis();
+          eepromActive      = true;// Request EEProm Write after timer expiry.
         }
       }
       else if (IS_IN_BOX(SNDBOX))
-      {                           // Adjust Audio Volume
+      {// Adjust Audio Volume
         if ((spkrVolSwitch >= VOL_OFF) && (spkrVolSwitch < VOL_LOW)) {
           spkrVolSwitch = VOL_LOW;
         }
@@ -348,203 +387,154 @@ void processScreen(void)
         }
 
         if (spkrVolSwitch == VOL_OFF) {
-          DacAudio.DacVolume = VOL_LOW; // Termporaily Use soft volume for Audio feedback.
-          DacAudio.Play(&lowBeep, true);
-          DacAudio.FillBuffer();
-
-          while (lowBeep.TimeLeft) {
-            DacAudio.FillBuffer();
-          }
-          DacAudio.DacVolume = spkrVolSwitch; // Now turn off volume.
+          spkr.volume(VOL_LOW);// Termporaily Use soft volume for Audio feedback.
+          spkr.playToEnd(lowBeep);
+          spkr.volume(VOL_OFF);// Now turn off volume.
           // DacAudio.StopAllSounds();
           Serial.println("Sound Disabled.");
         }
         else {
-          DacAudio.DacVolume = spkrVolSwitch;
-          DacAudio.Play(&highBeep, true);
-          DacAudio.FillBuffer();
+          spkr.volume(spkrVolSwitch);
+          spkr.highBeep();
           Serial.println("Sound Set to Volume " + String(spkrVolSwitch));
         }
         previousEepMillis = millis();
-        eepromActive      = true; // Request EEProm Write after timer expiry.
+        eepromActive      = true;// Request EEProm Write after timer expiry.
         updateVolumeIcon();
       }
       else if (IS_IN_BOX(INFOBOX))
-      { // Info button pressed
+      {// Info button pressed
         drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&highBeep, true);
-        }
+        spkr.highBeep();
       }
       else if (IS_IN_BOX(SETBOX))
-      { // Settings button pressed
+      {// Settings button pressed
         if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.StopAllSounds();
-          Sequence.RemoveAllPlayItems();
-          DacAudio.Play(&highBeep, false);
-
-          while (highBeep.TimeLeft) {
-            DacAudio.FillBuffer();
-          }
+          spkr.stopSounds();
+          spkr.playToEnd(highBeep);
         }
         drawSettingsPage();
       }
 
       else if (IS_IN_BOX(AUPBOX))
-      {                                 // Increase Amps Setting
-        if (arcSwitch == ARC_OFF || overTempAlert) {  // Welding current disabled.
+      {                                               // Increase Amps Setting
+        if ((arcSwitch == ARC_OFF) || overTempAlert) {// Welding current disabled.
           Serial.println("Arc Current Off: Amp setting cannot be changed.");
-          if (spkrVolSwitch != VOL_OFF) {
-            DacAudio.Play(&bloop, true); // Warn user that button is disabled.
-          }
+          spkr.bloop();
         }
         else {
-            setAmpsTimerFlag = true;
-            setAmpsTimer     = millis();
-            setAmpsActive    = true;
-            setAmps++;
-            setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-            setPotAmps(setAmps, VERBOSE_ON);         // Refresh Digital Pot.
-            displayAmps(true);                       // Refresh displayed value.
-            arrowMillis       = millis();
-            previousEepMillis = millis();
-            eepromActive      = true;                // Request EEProm Write after timer expiry.
+          setAmpsTimerFlag = true;
+          setAmpsTimer     = millis();
+          setAmpsActive    = true;
+          setAmps++;
+          setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
+          setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
+          displayAmps(true);              // Refresh displayed value.
+          arrowMillis       = millis();
+          previousEepMillis = millis();
+          eepromActive      = true;       // Request EEProm Write after timer expiry.
 
-            if (spkrVolSwitch != VOL_OFF) {
-                if (setAmps < MAX_SET_AMPS) {
-                    DacAudio.Play(&blip, true);
-                }
-                else {
-                    DacAudio.Play(&bloop, true);
-                }
-            }
+          if (setAmps < MAX_SET_AMPS) {
+            spkr.bleep();
+          }
+          else {
+            spkr.bloop();
+          }
         }
       }
 
       else if (IS_IN_BOX(ADNBOX))
-      {                                 // Decrease Amps Setting
-        if (arcSwitch == ARC_OFF || overTempAlert) {   // Welding current disabled.
+      {                                               // Decrease Amps Setting
+        if ((arcSwitch == ARC_OFF) || overTempAlert) {// Welding current disabled.
           Serial.println("Arc Current Off: Amp setting cannot be changed.");
-          if (spkrVolSwitch != VOL_OFF) {
-            DacAudio.Play(&bloop, true); // Warn user that button is disabled.
-          }
+          spkr.bloop();
         }
         else {
-            setAmpsTimerFlag = true;
-            setAmpsTimer     = millis();
-            setAmpsActive    = true;
-            setAmps--;
-            setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-            setPotAmps(setAmps, VERBOSE_ON);         // Refresh Digital Pot.
-            displayAmps(true);                       // Refresh displayed value.
-            arrowMillis       = millis();
-            previousEepMillis = millis();
-            eepromActive      = true;                // Request EEProm Write after timer expiry.
+          setAmpsTimerFlag = true;
+          setAmpsTimer     = millis();
+          setAmpsActive    = true;
 
-            if (spkrVolSwitch != VOL_OFF) {
-                if (setAmps > MIN_SET_AMPS) {
-                    DacAudio.Play(&blip, true);
-                }
-                else {
-                    DacAudio.Play(&bloop, true);
-                }
-            }
+          if (setAmps > 0) {
+            setAmps--;
+          }
+
+          setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
+          setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
+          displayAmps(true);              // Refresh displayed value.
+          arrowMillis       = millis();
+          previousEepMillis = millis();
+          eepromActive      = true;       // Request EEProm Write after timer expiry.
+
+          if (setAmps > MIN_SET_AMPS) {
+            spkr.bleep();
+          }
+          else {
+            spkr.bloop();
+          }
         }
       }
       else if (IS_IN_BOX(PULSEBOX))
       {
-        pulseSwitch = pulseSwitch == PULSE_ON ? false : true; // Toggle psuedo boolean
+        pulseSwitch = pulseSwitch == PULSE_ON ? false : true;// Toggle psuedo boolean
 
         if (pulseSwitch == PULSE_ON) {
-          if (spkrVolSwitch != VOL_OFF) {
-            DacAudio.Play(&highBeep, true);
-          }
-          Serial.println("Pulse Mode On: " + String(PulseFreqHz(),1) + " Hz, " + String(pulseAmpsPc) + "\% Amps");
+          spkr.highBeep();
+          Serial.println("Pulse Mode On: " + String(PulseFreqHz(), 1) + " Hz, " + String(pulseAmpsPc) + "\% Amps");
         }
         else {
-          if (spkrVolSwitch != VOL_OFF) {
-            DacAudio.Play(&lowBeep, true);
-          }
+          spkr.lowBeep();
           Serial.println("Pulse Mode Off");
         }
 
         drawPulseIcon();
-        displayAmps(true); // Refresh Amps display to update background color.
+        displayAmps(true);       // Refresh Amps display to update background color.
         controlArc(arcSwitch, VERBOSE_OFF);
         previousEepMillis = millis();
-        eepromActive      = true; // Request EEProm Write after timer expiry.
+        eepromActive      = true;// Request EEProm Write after timer expiry.
       }
     }
-
     else if (ts.touched() && wasTouched)
     {
-      if (setAmpsActive == true)
-      {
-        if (IS_IN_BOX(AUPBOX) && (millis() > arrowMillis + repeatms))
-        { // Increase Amps Setting while Up Arrow button is held down. Two speeds.
-          setAmpsTimerFlag = true;
-          setAmpsTimer     = millis();
+      if (setAmpsActive == true) {
+        if ((millis() > arrowMillis + repeatms)) {
+          int valChange = 0;
 
-          if (repeatCnt > REPEAT_CNT_THRS) {
-            repeatms = REPEAT_FAST_MS; // millisecond delay, fast.
+          if (IS_IN_BOX(AUPBOX)) {
+            valChange = 1;
+          } else if (IS_IN_BOX(ADNBOX)) {
+            valChange = -1;
           }
-          else {
-            repeatCnt++;
-            repeatms = REPEAT_SLOW_MS; // millisecond delay, slow.
-          }
-          arrowMillis       = millis();
-          previousEepMillis = millis();
-          eepromActive      = true;                // Request EEProm Write after timer expiry.
-          setAmps++;
-          setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-          setPotAmps(setAmps, VERBOSE_ON);         // Refresh Digital Pot.
-          displayAmps(true);                       // Refresh amps value.
 
-          if (spkrVolSwitch != VOL_OFF) {
-            if (repeatCnt == 1) {                  // First Repeated keypress.
-              DacAudio.Play(&ding, true);
+          if (valChange != 0)
+          {
+            setAmps         += valChange;
+            setAmpsTimerFlag = true;
+            setAmpsTimer     = millis();
+
+            if (repeatCnt > REPEAT_CNT_THRS) {
+              repeatms = REPEAT_FAST_MS;// millisecond delay, fast.
             }
-            else {                                 // Ongoing repeats.
-              if (setAmps < MAX_SET_AMPS) {
-                DacAudio.Play(&blip, true);
+            else {
+              repeatCnt++;
+              repeatms = REPEAT_SLOW_MS;// millisecond delay, slow.
+            }
+            arrowMillis       = millis();
+            previousEepMillis = millis();
+            eepromActive      = true;       // Request EEProm Write after timer expiry.
+
+            setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
+            setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
+            displayAmps(true);              // Refresh amps value.
+
+            if (repeatCnt == 1) {           // First Repeated keypress.
+              spkr.ding();
+            }
+            else {                          // Ongoing repeats.
+              if ((setAmps == MAX_SET_AMPS) || (setAmps == MIN_SET_AMPS)) {
+                spkr.bloop();
               }
               else {
-                DacAudio.Play(&bloop, true);
-              }
-            }
-          }
-        }
-        else if (IS_IN_BOX(ADNBOX) && (millis() > arrowMillis + repeatms))
-        { // Decrease Amp Setting while Up Arrow button is held down. Two speeds.
-          setAmpsTimerFlag = true;
-          setAmpsTimer     = millis();
-
-          if (repeatCnt > REPEAT_CNT_THRS) {
-            repeatms = REPEAT_FAST_MS; // millisecond delay, fast.
-          }
-          else {
-            repeatCnt++;
-            repeatms = REPEAT_SLOW_MS; // millisecond delay, slow.
-          }
-          arrowMillis       = millis();
-          previousEepMillis = millis();
-          eepromActive      = true;                // Request EEProm Write after timer expiry.
-          setAmps--;
-          setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-          setPotAmps(setAmps, VERBOSE_ON);         // Refresh Digital Pot.
-          displayAmps(true);                       // Refresh value.
-
-          if (spkrVolSwitch != VOL_OFF) {
-            if (repeatCnt == 1) {                  // First Repeated keypress.
-              DacAudio.Play(&beep, true);
-            }
-            else {                                 // Ongoing repeats.
-              if (setAmps > MIN_SET_AMPS) {
-                DacAudio.Play(&blip, true);
-              }
-              else {
-                DacAudio.Play(&bloop, true);
+                spkr.blip();
               }
             }
           }
@@ -552,339 +542,188 @@ void processScreen(void)
       }
     }
   }
-
-  else if (page == PG_INFO) // Information page. All display elements are drawn when drawInfoPage() is called.
+  else if (page == PG_INFO)// Information page. All display elements are drawn when drawInfoPage() is called.
   {
     if (!ts.touched())
     {
       wasTouched = false;
 
-      if (millis() > infoAbortMillis + MENU_RD_TIME_MS) {
+      if (millis() > abortMillis + MENU_RD_TIME_MS) {
         Serial.println("Main Info page timeout, exit.");
         drawHomePage();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
+        spkr.lowBeep();
       }
     }
     else if (ts.touched() && !wasTouched) {
-      infoAbortMillis = millis();
+      abortMillis = millis();
       wasTouched      = true;
       getTouchPoints();
 
-      if (IS_IN_BOX(RTNBOX))    // Return button. Return to homepage.
+      if (IS_IN_BOX(RTNBOX))// Return button. Return to homepage.
       {
         Serial.println("Exit Info, retured to home page");
         drawHomePage();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
+        spkr.lowBeep();
       }
       else if (isInBox(x, y, 45, 70, 225, 30))
       {
-        infoAbortMillis = millis();
+        abortMillis = millis();
         drawInfoPage6011();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&highBeep, true);
-        }
+        spkr.highBeep();
       }
       else if (isInBox(x, y, 45, 125, 225, 30))
       {
-        infoAbortMillis = millis();
+        abortMillis = millis();
         drawInfoPage6013();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&highBeep, true);
-        }
+        spkr.highBeep();
       }
       else if (isInBox(x, y, 45, 175, 225, 30))
       {
-        infoAbortMillis = millis();
+        abortMillis = millis();
         drawInfoPage7018();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&highBeep, true);
-        }
+        spkr.highBeep();
       }
     }
   }
 
-  else if (page == PG_INFO_6011) // Information page on 6011 Rod.
+  else if (page == PG_INFO_6011)// Information page on 6011 Rod.
+  {
+    handleRodInfoPage("6011", wasTouched);
+  }
+  else if (page == PG_INFO_6013)// Information page on 6013 Rod.
+  {
+    handleRodInfoPage("6013", wasTouched);
+  }
+  else if (page == PG_INFO_7018)// Information page on 7018 Rod.
+  {
+    handleRodInfoPage("7018", wasTouched);
+  }
+
+  else if (page == PG_SET)// Settings Page
   {
     if (!ts.touched())
     {
       wasTouched = false;
 
-      if (millis() > infoAbortMillis + PG_RD_TIME_MS)
-      {
-        Serial.println("6011 Info page timeout, exit.");
-        infoAbortMillis = millis(); // Reset the info page's keypress abort timer.
-        drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
-      }
-    }
-    else if (ts.touched() && !wasTouched)
-    {
-      infoAbortMillis = millis();
-      wasTouched      = true;
-      getTouchPoints();
-
-      if (IS_IN_BOX(SCREEN)) // Press anywhere on screen to main info page.
-      {
-        Serial.println("User Exit 6011 Info, retured to main info page");
-        infoAbortMillis = millis();
-        drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
-      }
-    }
-  }
-
-  else if (page == PG_INFO_6013) // Information page on 6013 Rod.
-  {
-    if (!ts.touched())
-    {
-      wasTouched = false;
-
-      if (millis() > infoAbortMillis + PG_RD_TIME_MS)
-      {
-        Serial.println("6013 Info page timeout, exit.");
-        infoAbortMillis = millis(); // Reset the info page's keypress abort timer.
-        drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
-      }
-    }
-    else if (ts.touched() && !wasTouched)
-    {
-      infoAbortMillis = millis();
-      wasTouched      = true;
-      getTouchPoints();
-
-      if (IS_IN_BOX(SCREEN)) // Press anywhere on screen to main info page.
-      {
-        Serial.println("User Exit 6013 Info, retured to main info page");
-        infoAbortMillis = millis();
-        drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
-      }
-    }
-  }
-
-  else if (page == PG_INFO_7018) // Information page on 7018 Rod.
-  {
-    if (!ts.touched())
-    {
-      wasTouched = false;
-
-      if (millis() > infoAbortMillis + PG_RD_TIME_MS)
-      {
-        Serial.println("7018 Info page timeout, exit.");
-        infoAbortMillis = millis(); // Reset the info page's keypress abort timer.
-        drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
-      }
-    }
-    else if (ts.touched() && !wasTouched)
-    {
-      infoAbortMillis = millis();
-      wasTouched      = true;
-      getTouchPoints();
-
-      if (IS_IN_BOX(SCREEN)) // Press anywhere on screen to main info page.
-      {
-        Serial.println("User Exit 7018 Info, retured to main info page");
-        infoAbortMillis = millis();
-        drawInfoPage();
-
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
-      }
-    }
-  }
-
-  else if (page == PG_SET) // Settings Page
-  {
-    if (!ts.touched())
-    {
-      wasTouched = false;
-
-      if (millis() > SettingsAbortMillis + PG_RD_TIME_MS)
+      if (millis() > abortMillis + PG_RD_TIME_MS)
       {
         Serial.println("Settings page timeout, exit.");
-        SettingsAbortMillis = millis(); // Reset the settings page's keypress abort timer.
+        abortMillis = millis();// Reset the settings page's keypress abort timer.
         drawHomePage();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
+        spkr.lowBeep();
       }
     }
     else if (ts.touched() && !wasTouched)
     {
-      SettingsAbortMillis = millis();
+      abortMillis = millis();
       wasTouched          = true;
       getTouchPoints();
 
-      if (IS_IN_BOX(RTNBOX)) // Return button. Return to home page.
+      if (IS_IN_BOX(RTNBOX))// Return button. Return to home page.
       {
         Serial.println("User Settings page, retured to Home page");
-        infoAbortMillis = millis();
+        abortMillis = millis();
         drawHomePage();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
+        spkr.lowBeep();
       }
-      else if (isInBox(x, y, SCREEN_W - (PSBOX_W + PSBOX_X), PSBOX_Y, PSBOX_W, PSBOX_H))
+      else if (isInBox(x, y, PSBOX_X  + PSBOX_W - 45, PSBOX_Y, 45, PSBOX_H))
       {
         limitHit = adjustPulseFreq(INCR);
-        Serial.println("Increased Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz"); // Increase Pulse Freq.
+        Serial.println("Increased Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Increase Pulse Freq.
 
-        if (spkrVolSwitch != VOL_OFF)
-        {
-          if (limitHit) { // End of travel reached.
-            DacAudio.Play(&bloop, true);
-          }
-          else {
-            DacAudio.Play(&blip, true);
-          }
-        }
+        spkr.limitHit(blip, limitHit);
       }
-      else if (IS_IN_BOX(PSBOX))
+      else if (isInBox(x, y, PSBOX_X, PSBOX_Y, 45, PSBOX_H))
       {
         limitHit = adjustPulseFreq(DECR);
-        Serial.println("Decreased Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz"); // Decrease Pulse Freq.
+        Serial.println("Decreased Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Decrease Pulse Freq.
 
-        if (spkrVolSwitch != VOL_OFF)
-        {
-          if (limitHit) { // End of travel reached.
-            DacAudio.Play(&bloop, true);
-          }
-          else {
-            DacAudio.Play(&bleep, true);
-          }
-        }
+        spkr.limitHit(bleep, limitHit);
       }
-      else if (IS_IN_BOX(PCBOX))
+      else if (isInBox(x, y, PCBOX_X, PCBOX_Y, 45, PCBOX_H))
       {
         limitHit = adjustPulseAmps(DECR);
-        Serial.println("Decreased Pulse Current: " + String(pulseAmpsPc) + "%"); // Decrease Pulse Amps (%).
+        Serial.println("Decreased Pulse Current: " + String(pulseAmpsPc) + "%");// Decrease Pulse Amps (%).
 
-        if (spkrVolSwitch != VOL_OFF)
-        {
-          if (limitHit) { // End of travel reached.
-            DacAudio.Play(&bloop, true);
-          }
-          else {
-            DacAudio.Play(&bleep, true);
-          }
-        }
+        spkr.limitHit(bleep, limitHit);
       }
-      else if (isInBox(x, y, SCREEN_W - (PCBOX_W + PCBOX_X), PCBOX_Y, PCBOX_W , PCBOX_H))
+      else if (isInBox(x, y, PCBOX_X  + PCBOX_W - 45, PCBOX_Y, 45, PCBOX_H))
       {
         limitHit = adjustPulseAmps(INCR);
-        Serial.println("Increased Pulse Current: " + String(pulseAmpsPc) + "%"); // Increase Pulse Amps (%).
+        Serial.println("Increased Pulse Current: " + String(pulseAmpsPc) + "%");// Increase Pulse Amps (%).
 
-        if (spkrVolSwitch != VOL_OFF)
-        {
-          if (limitHit) { // End of travel reached.
-            DacAudio.Play(&bloop, true);
-          }
-          else {
-            DacAudio.Play(&blip, true);
-          }
-        }
+        spkr.limitHit(blip, limitHit);
       }
       else if (IS_IN_BOX(BOBOX))
       {
-        bleSwitch    = (bleSwitch == BLE_ON ? BLE_OFF : BLE_ON); // Pseudo Boolean toggle.
-        eepromActive = true;                                     // Request EEPROM save for new settings.
+        bleSwitch    = (bleSwitch == BLE_ON ? BLE_OFF : BLE_ON);// Pseudo Boolean toggle.
+        eepromActive = true;                                    // Request EEPROM save for new settings.
 
         if ((bleSwitch == BLE_OFF) && (isBleServerConnected() == true)) {
           stopBle();
         }
-        previousEepMillis = millis(); // Set EEPROM write delay timer.
-        showBleStatus(BLE_MSG_AUTO);  // Update the Bluetooth On/Off button.
+        previousEepMillis = millis();// Set EEPROM write delay timer.
+        showBleStatus(BLE_MSG_AUTO); // Update the Bluetooth On/Off button.
         Serial.println("Bluetooth Mode: " + String(bleSwitch == BLE_ON ? "ON" : "OFF"));
 
-        if (bleSwitch == BLE_ON) {
-          DacAudio.Play(&blip, true);
-        }
-        else {
-          DacAudio.Play(&bleep, true);
-        }
+        spkr.play((bleSwitch == BLE_ON) ? blip : bleep);
       }
       else if (isInBox(x, y, FBBOX_X + 5, FBBOX_Y - 4, FBBOX_W - 15, FBBOX_H - 6))
       {
         if (bleSwitch == BLE_OFF)
         {
-          DacAudio.Play(&bloop, true);
+          spkr.bloop();
           Serial.println("Bluetooth Disabled!");
         }
         else if (isBleServerConnected())
         {
-          DacAudio.Play(&bleep, true);
+          spkr.bleep();
           Serial.println("Bluetooth Already Connected!");
           showBleStatus(BLE_MSG_FOUND);
         }
         else
         {
-          DacAudio.Play(&blip, true);
-          showBleStatus(BLE_MSG_SCAN); // Post "Bluetooth Scanning" message.
-
-          while (blip.TimeLeft) {
-            DacAudio.FillBuffer();
-          }
+          showBleStatus(BLE_MSG_SCAN);// Post "Bluetooth Scanning" message.
+          spkr.playToEnd(blip);
 
           if (isBleDoScan()) {
             Serial.println("User Requested BlueTooth Reconnect.");
-            reconnectBlueTooth(BLE_RESCAN_TIME); // Try to Reconnect to lost connection.
+            reconnectBlueTooth(BLE_RESCAN_TIME);// Try to Reconnect to lost connection.
           }
           else {
             Serial.println("User Requested Fresh BlueTooth Scan.");
-            scanBlueTooth();                                                  // Fresh Scan, never connected before.
+            scanBlueTooth();                                                 // Fresh Scan, never connected before.
           }
 
-          reconnectTimer(true);                                               // Reset Auto-Reconnect Timer.
+          reconnectTimer(true);                                              // Reset Auto-Reconnect Timer.
           bleWaitMillis = millis();
 
-          while (millis() <= bleWaitMillis + 2000 && !isBleServerConnected()) // Wait for advert callback to confirm connect.
+          while (millis() <= bleWaitMillis + 2000 && !isBleServerConnected())// Wait for advert callback to confirm connect.
           {
-            DacAudio.FillBuffer();                                            // Fill the sound buffer with data.
-            showHeartbeat();                                                  // Draw Heartbeat icon.
-            checkBleConnection();                                             // Check the Bluetooth iTAG FOB Button server connection.
+            spkr.fillBuffer();                                               // Fill the sound buffer with data.
+            showHeartbeat();                                                 // Draw Heartbeat icon.
+            checkBleConnection();                                            // Check the Bluetooth iTAG FOB Button server connection.
           }
 
           if (isBleServerConnected()) {
-            showBleStatus(BLE_MSG_FOUND); // Post "Found" message.
+            showBleStatus(BLE_MSG_FOUND);// Post "Found" message.
           }
           else {
-            showBleStatus(BLE_MSG_FAIL);  // Post "Not Found"
+            showBleStatus(BLE_MSG_FAIL); // Post "Not Found"
           }
         }
       }
     }
   }
 
-  else if (page == PG_ERROR) // System Error page.
+  else if (page == PG_ERROR)// System Error page.
   {
     if (!ts.touched())
     {
@@ -895,30 +734,17 @@ void processScreen(void)
       wasTouched = true;
       getTouchPoints();
 
-      if (IS_IN_BOX(SCREEN)) // Press anywhere on screen to main info page.
+      if (IS_IN_BOX(SCREEN))// Press anywhere on screen to main info page.
       {
         Serial.println("User Proceeded to Home Page despite Error Warning.");
         drawHomePage();
 
-        if (spkrVolSwitch != VOL_OFF) {
-          DacAudio.Play(&lowBeep, true);
-        }
+        spkr.lowBeep();
       }
     }
   }
 }
 
-// *********************************************************************************************
-// Get global x,y touch points and map to screen pixels.
-void getTouchPoints(void)
-{
-  TS_Point p = ts.getPoint();
-
-  //    Serial.println("raw X:" + String(p.x) + " raw Y:" + String(p.y));
-  x = map(p.x, TS_MINX, TS_MAXX, SCREEN_W, 0);
-  y = map(p.y, TS_MINY, TS_MAXY, SCREEN_H, 0);
-  Serial.println("[Touch Coordinates] X: " + String(x) + "  Y:" + String(y));
-}
 
 // *********************************************************************************************
 // Display Show Amps Setting when idle, otherwise show live Amps Value (when burning rod).
@@ -948,7 +774,7 @@ void displayAmps(bool forceRefresh)
       oldAmps = Amps;
     }
   }
-  else
+  else 
   {
     oldAmps = -1; // Force burn current refresh on next rod burn.
 
@@ -1052,12 +878,9 @@ void displayOverTempAlert(void)
   {
     detFlag = true;
     Serial.println("Warning: Over-Temperature has been detected!");
-
-    DacAudio.Play(&overHeatMsg, false);
-    if (overHeatMsg.TimeLeft <= 1) { // Don't interrupt a over-heat alarm message playback.
-      DacAudio.FillBuffer();
-    }
     drawOverTempAlert();
+    spkr.playToEnd(overHeatMsg);
+    // Don't interrupt a over-heat alarm message playback.
   }
 }
 
@@ -1129,31 +952,43 @@ void drawAmpBar(int x, int y, bool forceRefresh)
   tft.fillRect(AMPBAR_X, AMPBAR_Y, ampsMapped, AMPBAR_H, ILI9341_GREEN);
 }
 
-// *********************************************************************************************
-// Information page.
-void drawInfoPage(void)
-{
-  Serial.println("Main Info Page");
-  page            = PG_INFO;
-  infoAbortMillis = millis();
+void drawPageFrame(uint32_t bgColor, uint32_t marginColor) {
+  tft.fillScreen(ILI9341_BLACK); // CLS.
+  tft.fillRoundRect(0, 0, SCREEN_W, SCREEN_H, 5, bgColor);
+  tft.drawRoundRect(0, 0, SCREEN_W,     SCREEN_H,     5, marginColor);
+  tft.drawRoundRect(1, 1, SCREEN_W - 2, SCREEN_H - 2, 5, marginColor);
+}
+void drawSubPage(String title, int pg, uint32_t bgColor, uint32_t marginColor) {
 
-  tft.fillRect(0, 0, SCREEN_W, SCREEN_H, ILI9341_BLACK);
-  tft.drawRect(1, 1, tft.width() - 1, tft.height() - 1, ILI9341_WHITE);
-  tft.drawRect(2, 2, tft.width() - 3, tft.height() - 3, ILI9341_WHITE);
+  Serial.println(String("Page: ") + title);
+  page                = pg;
+  abortMillis = millis();
 
-  tft.fillRect(2, 2, tft.width() - 1, 40, ILI9341_WHITE);
+  // Prepare background.
+  drawPageFrame(bgColor, marginColor);
+
+  // Post Title Banner
+  tft.fillRect(2, 2, tft.width() - 4, 40, marginColor);
   tft.setFont(&FreeSansBold12pt7b);
   tft.setTextSize(1);
   tft.setTextColor(ILI9341_BLACK);
   tft.setCursor(55, 32);
-  tft.println("ROD INFORMATION");
-
+  tft.println("MACHINE SETTINGS");
   tft.drawBitmap(5, 5, returnBitMap, 35, 35, ILI9341_RED);
+}
 
+// *********************************************************************************************
+// Information page.
+void drawInfoPage(void)
+{
+  drawSubPage("ROD INFORMATION", PG_INFO, ILI9341_BLACK, ILI9341_WHITE);
+ 
   tft.setFont(&FreeSans12pt7b);
   tft.setTextSize(1);
   tft.setTextColor(ILI9341_YELLOW);
+  
   tft.drawRoundRect(43, 60, 234, 50, 8, WHITE);
+  
   tft.drawRoundRect(44, 61, 232, 48, 8, WHITE);
   tft.fillRoundRect(45, 62, 230, 46, 8, 0x2A86);
   tft.setCursor(120, 93);
@@ -1171,149 +1006,110 @@ void drawInfoPage(void)
 }
 
 // *********************************************************************************************
-// Information page for 6011 rod.
-void drawInfoPage6011(void)
+// Information page for XXXX rod.
+void drawInfoPageRod(int pageNum, const char* rodName, const char* mainInfo[4], const char* rodInfo[3])
 {
-  Serial.println("Showing Information on 6011 Rod");
-
-  page            = PG_INFO_6011;
-  infoAbortMillis = millis();
-
-  tft.fillRect(0, 0, SCREEN_W, SCREEN_H, ILI9341_BLACK);
-  tft.drawRect(1, 1, tft.width() - 1, tft.height() - 1, ILI9341_WHITE);
-  tft.drawRect(2, 2, tft.width() - 3, tft.height() - 2, ILI9341_WHITE);
-
-  tft.fillRect(2, 2, tft.width() - 1, 40, ILI9341_WHITE);
-  tft.setFont(&FreeSansBold12pt7b);
-  tft.setTextSize(1);
-  tft.setTextColor(ILI9341_BLACK);
-  tft.setCursor(50, 32);
-  tft.println("E-6011 INFORMATION");
-  tft.drawBitmap(5, 5, returnBitMap, 35, 35, ILI9341_RED);
+  drawSubPage(String(rodName) + " INFORMATION", pageNum, ILI9341_BLACK, ILI9341_WHITE);
 
   tft.setFont(&FreeSans12pt7b);
 
   tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(15, 70);
-  tft.println("3/32\" 2.4mm 40-90A");
+  tft.println(mainInfo[0]);
   tft.setCursor(15, 100);
-  tft.println("1/8\"   3.2mm 75-125A");
+  tft.println(mainInfo[1]);
   tft.setCursor(15, 130);
-  tft.println("5/32\" 4.0mm 110-165A");
+  tft.println(mainInfo[2]);
   tft.setCursor(15, 160);
-  tft.print("DCEP");
+  tft.print(mainInfo[3]);
 
   tft.setTextColor(ILI9341_YELLOW);
-  tft.print("  Deep Penetration");
+  tft.println(rodInfo[0]);
   tft.setCursor(15, 190);
-  tft.println("High Cellulose Potassium");
+  tft.println(rodInfo[1]);
   tft.setCursor(15, 220);
-  tft.println("All Position, 60K PSI");
+  tft.println(rodInfo[2]);
+}
+
+// *********************************************************************************************
+// Information page for 6011 rod.
+void drawInfoPage6011(void) {
+  const char* mainInfo[4] =                 { 
+                    "3/32\" 2.4mm 40-90A",
+                    "1/8\"   3.2mm 75-125A",
+                    "5/32\" 4.0mm 110-165A",
+                    "DCEP",
+                  };
+  const char* rodInfo[3] = {
+                    "  Deep Penetration",
+                    "High Cellulose Potassium",
+                    "All Position, 60K PSI",
+                  };
+
+  drawInfoPageRod(PG_INFO_6011, "E-6011", mainInfo, rodInfo);
 }
 
 // *********************************************************************************************
 // Information page for 6013 rod.
-void drawInfoPage6013(void)
-{
-  Serial.println("Showing Information on 6013 Rod");
+void drawInfoPage6013(void) {
+  const char* mainInfo[4] =                 { 
+                    "1/16\" 1.6mm 20-45A",
+                    "3/32\" 2.4mm 40-90A",
+                    "1/8\"   3.2mm 80-130A",
+                    "DCEP/DCEN"
+                  };
+  const char* rodInfo[3] = {
+                    "  Shallow Pen",
+                    "High Titania Potassium",
+                    "All Position, 60K PSI"
+                  };
 
-  page            = PG_INFO_6013;
-  infoAbortMillis = millis();
-
-  tft.fillRect(0, 0, SCREEN_W, SCREEN_H, ILI9341_BLACK);
-  tft.drawRect(1, 1, tft.width() - 1, tft.height() - 1, ILI9341_WHITE);
-  tft.drawRect(2, 2, tft.width() - 3, tft.height() - 2, ILI9341_WHITE);
-
-  tft.fillRect(2, 2, tft.width() - 1, 40, ILI9341_WHITE);
-  tft.setFont(&FreeSansBold12pt7b);
-  tft.setTextSize(1);
-  tft.setTextColor(ILI9341_BLACK);
-  tft.setCursor(50, 32);
-  tft.println("E-6013 INFORMATION");
-  tft.drawBitmap(5, 5, returnBitMap, 35, 35, ILI9341_RED);
-
-  tft.setFont(&FreeSans12pt7b);
-
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(15, 70);
-  tft.println("1/16\" 1.6mm 20-45A");
-  tft.setCursor(15, 100);
-  tft.println("3/32\" 2.4mm 40-90A");
-  tft.setCursor(15, 130);
-  tft.println("1/8\"   3.2mm 80-130A");
-  tft.setCursor(15, 160);
-  tft.print("DCEP/DCEN");
-
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.println("  Shallow Pen");
-  tft.setCursor(15, 190);
-  tft.println("High Titania Potassium");
-  tft.setCursor(15, 220);
-  tft.println("All Position, 60K PSI");
+  drawInfoPageRod(PG_INFO_6013, "E-6013", mainInfo, rodInfo);
 }
 
-// *********************************************************************************************
 // Information page for 7018 rod.
-void drawInfoPage7018(void)
-{
-  Serial.println("Showing Information on 7018 Rod");
+void drawInfoPage7018(void) {
+  const char* mainInfo[4] =                 { 
+                    "3/32\" 2.4mm 70-120A",
+                    "1/8\"   3.2mm 110-165A",
+                    "5/32\" 4.0mm 150-220A",
+                    "DCEP"
+                  };
+  const char* rodInfo[3] = {
+                    "  Shallow Penetration",
+                    "Iron Powder Low Hydrogen",
+                    "All Position, 70K PSI"
+                  };
 
-  page            = PG_INFO_6013;
-  infoAbortMillis = millis();
-
-  tft.fillRect(0, 0, SCREEN_W, SCREEN_H, ILI9341_BLACK);
-  tft.drawRect(1, 1, tft.width() - 1, tft.height() - 1, ILI9341_WHITE);
-  tft.drawRect(2, 2, tft.width() - 3, tft.height() - 2, ILI9341_WHITE);
-
-  tft.fillRect(2, 2, tft.width() - 1, 40, ILI9341_WHITE);
-  tft.setFont(&FreeSansBold12pt7b);
-  tft.setTextSize(1);
-  tft.setTextColor(ILI9341_BLACK);
-  tft.setCursor(50, 32);
-  tft.print("E-7018 INFORMATION");
-  tft.drawBitmap(5, 5, returnBitMap, 35, 35, ILI9341_RED);
-
-  tft.setFont(&FreeSans12pt7b);
-
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(15, 70);
-  tft.print("3/32\" 2.4mm 70-120A");
-  tft.setCursor(15, 100);
-  tft.print("1/8\"   3.2mm 110-165A");
-  tft.setCursor(15, 130);
-  tft.print("5/32\" 4.0mm 150-220A");
-  tft.setCursor(15, 160);
-  tft.print("DCEP");
-
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.print("  Shallow Penetration");
-  tft.setCursor(15, 190);
-  tft.print("Iron Powder Low Hydrogen");
-  tft.setCursor(15, 220);
-  tft.print("All Position, 70K PSI");
+  drawInfoPageRod(PG_INFO_7018, "E-7018", mainInfo, rodInfo);
 }
+
 
 // *********************************************************************************************
 // Paint the heart icon, state determines color.
 void drawCaution(int x, int y, bool state)
 {
-  int color;
+  unsigned int color;
 
   if (state) {
     color = ILI9341_YELLOW;
   }
   else {
-    if (page == PG_HOME) {
-      color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
-    }
-    else if ((page == PG_INFO) || (page == PG_INFO_6011) || (page == PG_INFO_6013) || (page == PG_INFO_7018)) {
-      color = ILI9341_BLACK;
-    }
-    else if (page == PG_ERROR) {
-      color = ILI9341_RED;
-    }
-    else {
-      color = ILI9341_WHITE;
+    switch(page) {
+      case PG_HOME: 
+        color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE; 
+        break;
+      case PG_INFO:
+      case PG_INFO_6011:
+      case PG_INFO_6013:
+      case PG_INFO_7018:
+        color = ILI9341_BLACK;
+        break;
+      case PG_ERROR:
+        color = ILI9341_RED;
+        break;
+      default:
+        color = ILI9341_WHITE; 
     }
   }
 
@@ -1388,28 +1184,17 @@ void drawErrorPage()
 // Home Page.
 void drawHomePage()
 {
-  unsigned int color;
-
   page = PG_HOME;
 
-  color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
-  tft.fillScreen(ILI9341_BLACK); // CLS.
-  tft.fillRoundRect(0, 0, SCREEN_W, SCREEN_H, 5, color);
-  tft.drawRoundRect(0, 0, SCREEN_W,     SCREEN_H,     5, ILI9341_CYAN);
-  tft.drawRoundRect(1, 1, SCREEN_W - 2, SCREEN_H - 2, 5, ILI9341_CYAN);
-
+  unsigned int color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
+  drawPageFrame(color, ILI9341_CYAN);
+  
   drawAmpsBox();
   displayOverTempAlert(); // Display temperature warning if too hot.
 
   // Draw Menu Icons
   tft.fillRoundRect(ARCBOX_X, ARCBOX_Y, ARCBOX_W, ARCBOX_H, ARCBOX_R, BUTTONBACKGROUND);
-
-  if (arcSwitch == ARC_ON) {
-    tft.drawBitmap(ARCBOX_X + 1, ARCBOX_Y + 2, arcOnBitmap, 45, 45, ILI9341_WHITE);
-  }
-  else {
-    tft.drawBitmap(ARCBOX_X + 1, ARCBOX_Y + 2, arcOffBitmap, 45, 45, ILI9341_WHITE);
-  }
+  tft.drawBitmap(ARCBOX_X + 1, ARCBOX_Y + 2, arcSwitch == ARC_ON? arcOnBitmap : arcOffBitmap, 45, 45, ILI9341_WHITE);
 
   // Speaker Volume Icon
   updateVolumeIcon();
@@ -1422,24 +1207,20 @@ void drawHomePage()
   tft.fillRoundRect(SETBOX_X, SETBOX_Y, SETBOX_W, SETBOX_H, SETBOX_R, BUTTONBACKGROUND);
   tft.drawBitmap(SETBOX_X + 1, SETBOX_Y + 2, settingsBitmap, 45, 45, ILI9341_WHITE);
 
-  // Arrow Up Icon
+  unsigned int arrowColor;
   if(overTempAlert) {
-      color = ILI9341_LIGHTGREY;
+      arrowColor = ILI9341_LIGHTGREY;
   }
   else {
-   color = arcSwitch == ARC_ON ? ILI9341_BLACK : ILI9341_LIGHTGREY;
+   arrowColor = arcSwitch == ARC_ON ? ILI9341_BLACK : ILI9341_LIGHTGREY;
   }
-  tft.fillRoundRect(AUPBOX_X, AUPBOX_Y, AUPBOX_W, AUPBOX_H, AUPBOX_R, color);
+
+  // Arrow Up Icon
+  tft.fillRoundRect(AUPBOX_X, AUPBOX_Y, AUPBOX_W, AUPBOX_H, AUPBOX_R, arrowColor);
   tft.drawBitmap(AUPBOX_X + 1, AUPBOX_Y + 8, arrowUpBitmap, 45, 60, ILI9341_WHITE);
 
   // Arrow Down Icon
-  if(overTempAlert) {
-      color = ILI9341_LIGHTGREY;
-  }
-  else {
-   color = arcSwitch == ARC_ON ? ILI9341_BLACK : ILI9341_LIGHTGREY;
-  }
-  tft.fillRoundRect(ADNBOX_X, ADNBOX_Y, ADNBOX_W, ADNBOX_H, ADNBOX_R, color);
+  tft.fillRoundRect(ADNBOX_X, ADNBOX_Y, ADNBOX_W, ADNBOX_H, ADNBOX_R, arrowColor);
   tft.drawBitmap(ADNBOX_X + 1, ADNBOX_Y + 8, arrowDnBitmap, 45, 60, ILI9341_WHITE);
 
   drawPulseIcon();
@@ -1459,8 +1240,6 @@ void drawHomePage()
 // *********************************************************************************************
 void drawPulseIcon(void)
 {
-  int color; // General purpose color var.
-
   if (pulseSwitch == PULSE_ON)
   {
     tft.fillRoundRect(PULSEBOX_X,      PULSEBOX_Y, PULSEBOX_W, PULSEBOX_H, PULSEBOX_R, BUTTONBACKGROUND); // Button Box.
@@ -1484,7 +1263,7 @@ void drawPulseIcon(void)
   }
   else
   {
-    color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
+    unsigned int color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
     tft.fillRoundRect(PULSEBOX_X + 40, PULSEBOX_Y, PULSEBOX_W, PULSEBOX_H, PULSEBOX_R, color);            // Erase of Pulse Value Box.
     tft.fillRoundRect(PULSEBOX_X,      PULSEBOX_Y, PULSEBOX_W, PULSEBOX_H, PULSEBOX_R, BUTTONBACKGROUND); // Refresh Button Box.
     tft.drawBitmap(PULSEBOX_X + 1, PULSEBOX_Y + 2, pulseOffBitmap, 45, 45, ILI9341_WHITE);                // Icon Image
@@ -1507,158 +1286,112 @@ void drawOverTempAlert(void) {
     tft.setCursor(AMPBOX_X + 35, AMPBOX_Y + 95);
     tft.println("ALARM!");
 }
-
 // *********************************************************************************************
 // Draw (or erase) the Arc lightning Bolt on Pulse Button.
 void drawPulseLightning(void)
 {
   if (page == PG_HOME)
   {
-    if (pulseState && (Amps >= PULSE_AMPS_THRS)) {
-      tft.drawBitmap(PULSEBOX_X + 25, PULSEBOX_Y + 2, arcPulseBitmap, 21, 45, ILI9341_YELLOW);   // Draw Icon Image
-    }
-    else if (pulseState && (Amps < PULSE_AMPS_THRS)) {
-      tft.drawBitmap(PULSEBOX_X + 25, PULSEBOX_Y + 2, arcPulseBitmap, 21, 45, LIGHT_BLUE);       // Draw Icon Image
+    unsigned int color;
+    if (pulseState) {
+      color = Amps >= PULSE_AMPS_THRS ? ILI9341_YELLOW : LIGHT_BLUE;
     }
     else {
-      tft.drawBitmap(PULSEBOX_X + 25, PULSEBOX_Y + 2, arcPulseBitmap, 21, 45, BUTTONBACKGROUND); // Erase Icon Image
+      color = BUTTONBACKGROUND; // Erase Icon Image
     }
+    tft.drawBitmap(PULSEBOX_X + 25, PULSEBOX_Y + 2, arcPulseBitmap, 21, 45, color);
   }
 }
 
 // *********************************************************************************************
 // Show Pulse Amps Settings Button Box (Left / Right arrows with pulseFreqX10 value)
-void drawPulseAmpsSettings(void)
+void drawPulseAmpsSettings(bool update_only)
 {
-  if (page == PG_SET)
-  {
-    tft.fillRect(PCBOX_X + 150, PCBOX_Y + 4, 80, PCBOX_H - 6, ILI9341_WHITE); // Erase pulseAmpsPc Data Area for value refresh.
-    tft.drawRoundRect(PCBOX_X - 2, PCBOX_Y - 4, SCREEN_W - (PCBOX_X + 15), PCBOX_H + 8, 5, ILI9341_BLACK);
-    tft.drawRoundRect(PCBOX_X - 1, PCBOX_Y - 3, SCREEN_W - (PCBOX_X + 17), PCBOX_H + 6, 5, ILI9341_BLACK);
-    tft.drawBitmap(PCBOX_X + 5,                        PCBOX_Y + 1, ButtonLtBitmap, 40, 40, ILI9341_BLUE);
-    tft.drawBitmap(SCREEN_W - (PCBOX_W + PCBOX_X + 5), PCBOX_Y + 1, ButtonRtBitmap, 40, 40, ILI9341_BLUE);
-    tft.setFont(&FreeSansBold12pt7b);
-    tft.setTextSize(1);
-    tft.setTextColor(ILI9341_BLACK);
-    tft.setCursor(PCBOX_X + PCBOX_W + 27, PCBOX_Y + 30);
-    tft.println("BkGnd: " + String(pulseAmpsPc) + "%");
-  }
+    if (page == PG_SET) {
+      drawPlusMinusButtons(COORD(PCBOX), "BkGnd: " + String(pulseAmpsPc) + "%", update_only);
+    }
 }
 
 // *********************************************************************************************
 // Show Pulse Frequency Settings Button Box (Left / Right arrows with pulseFreqX10 value)
-void drawPulseHzSettings(void)
+void drawPulseHzSettings(bool update_only)
 {
-  if (page == PG_SET)
-  {
-    tft.fillRect(PSBOX_X + 135, PSBOX_Y + 4, 80, PSBOX_H - 6, ILI9341_WHITE); // Erase PulseFreqHz Data Area for value refresh.
-    tft.drawRoundRect(PSBOX_X - 2, PSBOX_Y - 4, SCREEN_W - (PSBOX_X + 15), PSBOX_H + 8, 5, ILI9341_BLACK);
-    tft.drawRoundRect(PSBOX_X - 1, PSBOX_Y - 3, SCREEN_W - (PSBOX_X + 17), PSBOX_H + 6, 5, ILI9341_BLACK);
-    tft.drawBitmap(PSBOX_X + 5,                        PSBOX_Y + 1, ButtonLtBitmap, 40, 40, ILI9341_BLUE);
-    tft.drawBitmap(SCREEN_W - (PSBOX_W + PSBOX_X + 5), PSBOX_Y + 1, ButtonRtBitmap, 40, 40, ILI9341_BLUE);
-    tft.setFont(&FreeSansBold12pt7b);
-    tft.setTextSize(1);
-    tft.setTextColor(ILI9341_BLACK);
-    tft.setCursor(PSBOX_X + PSBOX_W + 23, PSBOX_Y + 30);
-    tft.println("Pulse: " + String(PulseFreqHz(), 1) + " Hz");
+  if (page == PG_SET) {
+    drawPlusMinusButtons(COORD(PSBOX), "Pulse: " + String(PulseFreqHz(), 1) + " Hz", update_only);
   }
 }
 
 // *********************************************************************************************
 void drawSettingsPage()
 {
-  Serial.println("Settings Page");
-  page                = PG_SET;
-  SettingsAbortMillis = millis();
-
-  // Prepare background.
-  tft.fillScreen(ILI9341_BLACK); // CLS.
-  tft.fillRoundRect(0, 0, SCREEN_W, SCREEN_H, 5, ILI9341_WHITE);
-  tft.drawRoundRect(0, 0, SCREEN_W,     SCREEN_H,     5, ILI9341_CYAN);
-  tft.drawRoundRect(1, 1, SCREEN_W - 2, SCREEN_H - 2, 5, ILI9341_CYAN);
-
-  // Post Title Banner
-  tft.fillRect(2, 2, tft.width() - 1, 40, ILI9341_CYAN);
-  tft.setFont(&FreeSansBold12pt7b);
-  tft.setTextSize(1);
-  tft.setTextColor(ILI9341_BLACK);
-  tft.setCursor(55, 32);
-  tft.println("MACHINE SETTINGS");
-  tft.drawBitmap(5, 5, returnBitMap, 35, 35, ILI9341_RED);
+  drawSubPage("MACHINE SETTINGS", PG_SET, ILI9341_WHITE, ILI9341_CYAN);
 
   // Show Pulse Settings Buttons (Left / Right arrows)
-  drawPulseHzSettings();
+  drawPulseHzSettings(false);
 
   // Pulse Current Settings Button
-  drawPulseAmpsSettings();
+  drawPulseAmpsSettings(false);
 
   // Show the BlueTooth Scan Button.
-  tft.drawRoundRect(FBBOX_X - 2, FBBOX_Y - 4, FBBOX_W, FBBOX_H + 8, 5, ILI9341_BLACK);
-  tft.drawRoundRect(FBBOX_X - 1, FBBOX_Y - 3, FBBOX_W, FBBOX_H + 6, 5, ILI9341_BLACK);
+  drawBasicButton(COORD(FBBOX),ILI9341_BLACK);
+
   showBleStatus(BLE_MSG_AUTO); // Show status message in Bluetooth button box.
 
   // Show the Bluetooth On/Off Button.
-  tft.drawRoundRect(FBBOX_X + FBBOX_W + 10, FBBOX_Y - 4, BOBOX_W, FBBOX_H + 8, 5, ILI9341_BLACK);
-  tft.drawRoundRect(FBBOX_X + FBBOX_W + 9,  FBBOX_Y - 3, BOBOX_W, FBBOX_H + 6, 5, ILI9341_BLACK);
+  drawBasicButton(FBBOX_X + FBBOX_W + 12,FBBOX_Y, BOBOX_W, FBBOX_H, ILI9341_BLACK);
+
 }
+
 
 // *********************************************************************************************
 // Show the status text message inside the Bluetooth scan button box.
 // Pass msgNumber for message to post.
 void showBleStatus(int msgNumber)
 {
-  tft.setFont(&FreeSansBold12pt7b);
-  tft.setTextSize(1);
-  tft.fillRect(FBBOX_X + 2, FBBOX_Y, FBBOX_W - 5, FBBOX_H, ILI9341_WHITE); // Erase Text box area.
+  String label;
+  uint32_t color = ILI9341_BLACK;
 
   // Post the requested message.
   if (msgNumber == BLE_MSG_AUTO)
   {
     if ((bleSwitch == BLE_ON) && isBleServerConnected())
     {
-      tft.setTextColor(ILI9341_GREEN);
-      tft.setCursor(FBBOX_X + 35, FBBOX_Y + 30);
-      tft.println("Bluetooth On");
+      color = ILI9341_GREEN;
+      label = "Bluetooth On";
     }
     else if (bleSwitch == BLE_OFF)
     {
-      tft.setTextColor(ILI9341_BLACK);
-      tft.setCursor(FBBOX_X + 30, FBBOX_Y + 30);
-      tft.println("Bluetooth Off");
+      label = "Bluetooth Off";
     }
     else if (bleSwitch == BLE_ON)
     {
-      tft.setTextColor(ILI9341_BLACK);
-      tft.setCursor(FBBOX_X + 20, FBBOX_Y + 30);
-      tft.println("Scan Bluetooth");
+      label = "Scan Bluetooth";
     }
   }
   else if (msgNumber == BLE_MSG_SCAN)
   {
-    tft.setTextColor(ILI9341_BLUE);
-    tft.setCursor(FBBOX_X + 50, FBBOX_Y + 30);
-    tft.println("Scanning ...");
+    color = ILI9341_BLUE;
+    label = "Scanning ...";
   }
   else if (msgNumber == BLE_MSG_FAIL)
   {
-    tft.setTextColor(ILI9341_RED);
-    tft.setCursor(FBBOX_X + 18, FBBOX_Y + 30);
-    tft.println("FOB Not Found");
+    color = ILI9341_RED;
+    label = "FOB Not Found";
   }
   else if (msgNumber == BLE_MSG_FOUND)
   {
-    tft.setTextColor(ILI9341_GREEN);
-    tft.setCursor(FBBOX_X + 12, FBBOX_Y + 30);
-    tft.println("FOB Connected");
+    color = ILI9341_GREEN;
+    label = "FOB Connected";
   }
 
+  tft.setFont(&FreeSansBold12pt7b);
+  tft.setTextSize(1);
+  tft.setTextColor(color);  
+  drawCenteredText(COORD(FBBOX), label, ILI9341_WHITE);
+
   // Update Bluetooth On/Off Switch button
-  if (bleSwitch == BLE_OFF) {
-    tft.drawBitmap(FBBOX_X + FBBOX_W + 14, FBBOX_Y, PowerSwBitmap, 40, 40, ILI9341_RED);
-  }
-  else {
-    tft.drawBitmap(FBBOX_X + FBBOX_W + 14, FBBOX_Y, PowerSwBitmap, 40, 40, ILI9341_GREEN);
-  }
+  tft.drawBitmap(FBBOX_X + FBBOX_W + 17, FBBOX_Y, PowerSwBitmap, 40, 40, bleSwitch == BLE_OFF ? ILI9341_RED : ILI9341_GREEN);
+  
 }
 
 // *********************************************************************************************
@@ -1690,30 +1423,22 @@ void updateVolumeIcon(void)
 {
   tft.fillRoundRect(SNDBOX_X, SNDBOX_Y, SNDBOX_W, SNDBOX_H, SNDBOX_R, BUTTONBACKGROUND);
 
-  if ((spkrVolSwitch >= VOL_OFF) && (spkrVolSwitch < VOL_LOW)) // Audio Off
-  {
+  if ((spkrVolSwitch >= VOL_OFF) && (spkrVolSwitch < VOL_LOW)) { // Audio Off
     tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundOffBitmap, 45, 45, ILI9341_WHITE);
   }
-  else if ((spkrVolSwitch >= VOL_LOW) && (spkrVolSwitch < VOL_MED)) // Audio Low
-  {
+  else if (spkrVolSwitch >= VOL_LOW) {
     tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundBitmap, 45, 45, ILI9341_WHITE);
-  }
-  else if ((spkrVolSwitch >= VOL_MED) && (spkrVolSwitch < VOL_HI))           // Audio Med
-  {
-    tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundBitmap, 45, 45, ILI9341_WHITE);
-    fillArc(SNDBOX_X + 8, SNDBOX_Y + 25, 62, 8, 25, 25, 2, ILI9341_WHITE);   // 1st Short arc
-  }
-  else if ((spkrVolSwitch >= VOL_HI) && (spkrVolSwitch < XHI_VOL))           // Audio High
-  {
-    tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundBitmap, 45, 45, ILI9341_WHITE);
-    fillArc(SNDBOX_X + 8,  SNDBOX_Y + 25, 62, 8,  25, 25, 2, ILI9341_WHITE); // 1st Short arc
-    fillArc(SNDBOX_X + 18, SNDBOX_Y + 25, 56, 10, 25, 25, 2, ILI9341_WHITE); // 2nd Short arc
-  }
-  else
-  {
-    tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundBitmap, 45, 45, ILI9341_WHITE);
-    fillArc(SNDBOX_X + 8,  SNDBOX_Y + 25, 62, 8,  25, 25, 2, ILI9341_WHITE); // 1st Short arc
-    fillArc(SNDBOX_X + 14, SNDBOX_Y + 25, 45, 13, 30, 30, 3, ILI9341_WHITE); // Long arc
+
+    if (spkrVolSwitch >= VOL_MED) {
+      fillArc(SNDBOX_X + 8, SNDBOX_Y + 25, 62, 8, 25, 25, 2, ILI9341_WHITE);   // 1st Short arc
+    
+      if ((spkrVolSwitch >= VOL_HI) && (spkrVolSwitch < XHI_VOL)) {          // Audio High
+        fillArc(SNDBOX_X + 18, SNDBOX_Y + 25, 56, 10, 25, 25, 2, ILI9341_WHITE); // 2nd Short arc
+      }
+      else if (spkrVolSwitch >= XHI_VOL) { // Audio Extra High
+        fillArc(SNDBOX_X + 14, SNDBOX_Y + 25, 45, 13, 30, 30, 3, ILI9341_WHITE); // Long arc
+      }
+    }
   }
 }
 

@@ -12,6 +12,8 @@
    (c) copyright T. Black 2019-2020, Licensed under GNU GPL 3.0 and later, under this license absolutely no warranty is given.
    This Code was formatted with the uncrustify extension.
  */
+#ifndef __PULSE_WELDER_H__
+#define __PULSE_WELDER_H__
 
 #include "BLEDevice.h"
 
@@ -139,11 +141,17 @@
 #define DOUBLE_CLICK_TIME 750    // Bluetooth FOB Button Click Timer, in mS.
 #define EEP_DELAY_TIME 3500      // Delay Time before writing Volume value to EEPROM.
 #define HB_FLASH_TIME 500        // Heartbeat & LED FLASH Update Time, in mS.
-#define MEAS_TIME 65             // Measurement Refresh Time, in mS. Must exceed INA219 conversion Time.
+#define MEAS_TIME 5              // Measurement Refresh Time, in mS.
 #define RECONNECT_DLY_TIME 20000 // Delay time before attempting a Bluetooth re-connect.
 #define SPLASH_TIME 2500         // Timespan for showing Splash Screen at boot.
 
 // *********************************************************************************************
+enum StartMode {
+  SCRATCH_START,
+  LIFT_START
+};
+
+extern StartMode startMode;
 
 // Amps & Volts Measurement Prototypes
 void initVdcAdc(void);
@@ -199,8 +207,8 @@ void drawInfoPage6011(void);
 void drawInfoPage6013(void);
 void drawInfoPage7018(void);
 void drawOverTempAlert(void);
-void drawPulseAmpsSettings(void);
-void drawPulseHzSettings(void);
+void drawPulseAmpsSettings(bool update_only);
+void drawPulseHzSettings(bool update_only);
 void drawPulseIcon(void);
 void drawPulseLightning(void);
 void drawSettingsPage(void);
@@ -221,7 +229,6 @@ void fillArc(int          x,
              unsigned int color);
 
 // Misc Prototypes
-void  AddNumberToSequence(int theNumber);
 void  controlArc(bool state,
                  bool verbose);
 void  disableArc(bool verbose);
@@ -232,8 +239,10 @@ void  checkForAlerts(void);
 float PulseFreqHz(void);
 void  pulseModulation(void);
 void  remoteControl(void);
+void detectArcState(void);
 
 // SPIFFS Prototypes
 void  spiffsInit(void);
 
+#endif
 // EOF

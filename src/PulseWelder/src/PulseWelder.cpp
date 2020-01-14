@@ -62,11 +62,10 @@
 #include <WiFi.h>
 #include "INA219.h"
 #include "PulseWelder.h"
-#include "XT_DAC_Audio.h"
-#include "dacAudio.h"
 #include "screen.h"
 #include "digPot.h"
 #include "config.h"
+#include "speaker.h"
 
 // INA219 Current Sensor
 INA219 ina219;
@@ -226,22 +225,14 @@ void setup()
   // attachInterrupt(interruptPin, isr, FALLING);
 
   // Initialize Audio Voice and tones.
-  promoMsg.Speed     = 1.0;           // Normal Playback Speed.
-  promoMsg.Volume    = 127;           // Maximum Sub-Volume (0-127 allowed).
-  DacAudio.DacVolume = spkrVolSwitch; // Set Master-Volume (0-100 allowed). This is a Menu setting.
-  DacAudio.Play(&beep, false);        // Init audio, Beep user.
+  spkr.volume(spkrVolSwitch); // Set Master-Volume (0-100 allowed). This is a Menu setting.
+  spkr.playToEnd(beep);        // Init audio, Beep user.
 
-  while (beep.TimeLeft)               // Wait until beep tone has finished playing.
-  {
-    DacAudio.FillBuffer();
-  }
   Serial.println("Initialized Audio Playback System.");
 
  // Welcome the user with a promotional voice message.
-  if (spkrVolSwitch != VOL_OFF) {
-    DacAudio.Play(&promoMsg, true);
-  }
-
+  spkr.play(promoMsg);
+  
   // Done with initialization. Show Home Page or Hardware Error Page.
   if (systemError == ERROR_NONE) {  // Hardware is OK.
     drawHomePage();
@@ -290,7 +281,7 @@ void loop()
   }
 
   // Background tasks
-  DacAudio.FillBuffer(); // Fill the sound buffer with data.
+  spkr.fillBuffer();     // Fill the sound buffer with data.
   showHeartbeat();       // Display Flashing Heartbeat icon.
   checkForAlerts();      // Check for alert conditions.
   processScreen();       // Process Menu System (touch screen).

@@ -105,13 +105,13 @@
 
 #define PCBOX_X 20 // Pulse Current Settings Button Box area X
 #define PCBOX_Y 112
-#define PCBOX_W 40
+#define PCBOX_W (SCREEN_W - (PCBOX_X + 15))
 #define PCBOX_H 40
 #define PCBOX_R 3
 
 #define PSBOX_X 20 // Pulse Settings Left/Right Button Box area X
 #define PSBOX_Y 55
-#define PSBOX_W 40
+#define PSBOX_W (SCREEN_W - (PSBOX_X + 15))
 #define PSBOX_H 40
 #define PSBOX_R 3
 
