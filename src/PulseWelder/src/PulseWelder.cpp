@@ -3,8 +3,8 @@
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
    Version: 1.2
    Creation: Sep-11-2019
-   Revised: Dec-29-2019.
-   Public Release: Jan-03-2020
+   Revised: Jan-14-2020
+   Public Release: Jan-15-2020
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
 
