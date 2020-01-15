@@ -140,7 +140,6 @@ int getFobClick(bool rst)
 void remoteControl(void)
 {
   int click = CLICK_NONE;
-  int amps1, amps10, amps100;
 
   processFobClick();         // Update button detection status on BLE FOB.
   click = getFobClick(true); // Get Button Click value.
@@ -188,10 +187,7 @@ void remoteControl(void)
             Serial.print("Announce <no change>:  ");
         }
 
-        amps100 = setAmps / 100;
-        amps10  = (setAmps - amps100 * 100) / 10;
-        amps1   = setAmps - (amps100 * 100 + amps10 * 10);
-        Serial.println(String(setAmps / 100) + "-" + String((setAmps - amps100 * 100) / 10) + "-" + String(amps1));
+        Serial.println(String((setAmps/100) % 10) + "-" + String((setAmps/10) % 10) + "-" + String(setAmps % 10));
 
         setPotAmps(setAmps, VERBOSE_ON);           // Refresh Digital Pot.
         spkr.addDigitSounds(setAmps);
