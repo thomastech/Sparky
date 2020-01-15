@@ -1,10 +1,10 @@
 /*
    File: misc.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
+   Version: 1.2
    Creation: Sep-11-2019
-   Revised: Dec-29-2019.
-   Public Release: Jan-03-2020
+   Revised: Jan-14-2020
+   Public Release: Jan-15-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
@@ -140,6 +140,7 @@ int getFobClick(bool rst)
 void remoteControl(void)
 {
   int click = CLICK_NONE;
+  int amps1, amps10, amps100;
 
   processFobClick();         // Update button detection status on BLE FOB.
   click = getFobClick(true); // Get Button Click value.
@@ -152,6 +153,9 @@ void remoteControl(void)
     }
 
     if(overTempAlert){
+        if(overHeatMsg.Playing==false) {
+            spkr.stopSounds();  // Override existing announcement.
+        }
         spkr.playToEnd(overHeatMsg);
         Serial.println("Announce: Alarm");
     }
@@ -159,6 +163,7 @@ void remoteControl(void)
         arcSwitch = ARC_ON;
         drawHomePage();
         spkr.addSoundList({&silence100ms, &ding, &beep, &silence100ms, &currentOnMsg});
+        spkr.playSoundList();
         Serial.println("Announce: Arc Current Turned On.");
     }
     else {
@@ -166,26 +171,30 @@ void remoteControl(void)
         if (click == CLICK_SINGLE) {
           changeVal = REMOTE_AMP_CHG;
         }
-        else if (click == CLICK_DOUBLE) {  
+        else if (click == CLICK_DOUBLE) {
           changeVal = -REMOTE_AMP_CHG;
         }
 
         byte newSetAmps = constrain((int)setAmps + changeVal, MIN_SET_AMPS, MAX_SET_AMPS);
         // explicitly cast setAmps to int in order to handle going into negative amps when subtracting changeVal
-        // gracefully. 
+        // gracefully.
 
         if (setAmps != newSetAmps) {
-            setAmps = newSetAmps;
             spkr.addSoundList({(setAmps < newSetAmps) ? &increaseMsg : &decreaseMsg});
             Serial.print(setAmps < newSetAmps ? "Announce: Increase ": "Announce: Decrease ");
+            setAmps = newSetAmps;
         }
         else {
             Serial.print("Announce <no change>:  ");
         }
 
+        amps100 = setAmps / 100;
+        amps10  = (setAmps - amps100 * 100) / 10;
+        amps1   = setAmps - (amps100 * 100 + amps10 * 10);
+        Serial.println(String(setAmps / 100) + "-" + String((setAmps - amps100 * 100) / 10) + "-" + String(amps1));
+
         setPotAmps(setAmps, VERBOSE_ON);           // Refresh Digital Pot.
         spkr.addDigitSounds(setAmps);
-
         spkr.playSoundList();
     }
   }

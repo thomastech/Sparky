@@ -1,5 +1,6 @@
 /******************************************************************************
-* Sept-17-2019: Minor edits by T. Black.
+* Sep-17-2019: Minor edits by thomastech for Sparky Welding Project.
+* Jan-14-2020: Improved response time, by hogthrob for Sparky Welding Project.
 *   Added arduino.h to supress _delay() warnings.
 *   Fixed math in INA219::calibrate() to support shunt values less than 0.001 ohms.
 *

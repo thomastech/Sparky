@@ -1,10 +1,10 @@
 /*
    File: speaker.h
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
-   Creation: Jan-15-2020
-   Revised:
-   Public Release:
+   Version: 1.2
+   Creation: Jan-14-2020
+   Revised: Jan-14-2020
+   Public Release: Jan-15-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob

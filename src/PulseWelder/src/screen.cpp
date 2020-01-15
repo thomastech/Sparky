@@ -1,10 +1,10 @@
 /*
    File: screen.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
+   Version: 1.2
    Creation: Sep-11-2019
-   Revised: Dec-29-2019.
-   Public Release: Jan-03-2020
+   Revised: Jan-14-2020.
+   Public Release: Jan-15-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
@@ -48,7 +48,7 @@ static char StringBuff[32];          // General purpose Char Buffer
 static bool eepromActive = false;    // EEProm Write Requested.
 static int  page = PG_HOME;          // Current Menu Page.
 static int  x, y;                    // Screen's Touch coordinates.
-static long abortMillis     = 0; // Info Page Abort Timer, in mS.
+static long abortMillis     = 0;     // Info Page Abort Timer, in mS.
 static long previousEepMillis   = 0; // Previous Home Page time.
 
 #define COORD(BOXNAME) BOXNAME ## _X , BOXNAME ## _Y , BOXNAME ## _W , BOXNAME ## _H
@@ -116,13 +116,13 @@ bool adjustPulseFreq(bool direction)
 
   // Check for out of bounds values. Constrain in necessary.
   byte constrainedPulseFreqX10 = constrain(pulseFreqX10, MIN_PULSE_FRQ_X10, MAX_PULSE_FRQ_X10);
-  
+
   limitHit = constrainedPulseFreqX10 != pulseFreqX10;
   // if constrained freq is not equal original frequency we are out of bounds
-  
+
   pulseFreqX10 = constrainedPulseFreqX10;
   // always use constrained frequency
-  
+
   // Refresh the Pulse Entry display (if on page PG_SET)
   drawPulseHzSettings(true);
 
@@ -212,11 +212,11 @@ void getTouchPoints(void)
   Serial.println("[Touch Coordinates] X: " + String(x) + "  Y:" + String(y));
 }
 
-void drawCenteredText(int x, int y, int w, int h, String label, uint32_t bgcolor) 
+void drawCenteredText(int x, int y, int w, int h, String label, uint32_t bgcolor)
 {
   int16_t lx,ly;
   uint16_t lw, lh;
-  
+
   // calculate text length
   tft.getTextBounds(label, x , y , &lx,  &ly, &lw, &lh);
   int nxd = (w - lw)/2; // calculate offset from left margin to print label centered
@@ -226,13 +226,13 @@ void drawCenteredText(int x, int y, int w, int h, String label, uint32_t bgcolor
   tft.println(label);
 }
 
-void drawBasicButton(int x, int y, int w, int h, uint color) 
+void drawBasicButton(int x, int y, int w, int h, uint color)
 {
   tft.drawRoundRect(x - 2, y - 4, w+4, h + 8, 5, color);
   tft.drawRoundRect(x - 1, y - 3, w+2, h + 6, 5, color);
 }
 
-void drawPlusMinusButtons(int x, int y, int w, int h, String label, bool update_only) 
+void drawPlusMinusButtons(int x, int y, int w, int h, String label, bool update_only)
 {
   tft.setFont(&FreeSansBold12pt7b);
   tft.setTextSize(1);
@@ -774,7 +774,7 @@ void displayAmps(bool forceRefresh)
       oldAmps = Amps;
     }
   }
-  else 
+  else
   {
     oldAmps = -1; // Force burn current refresh on next rod burn.
 
@@ -879,6 +879,7 @@ void displayOverTempAlert(void)
     detFlag = true;
     Serial.println("Warning: Over-Temperature has been detected!");
     drawOverTempAlert();
+    spkr.stopSounds();  // Override existing announcement.
     spkr.playToEnd(overHeatMsg);
     // Don't interrupt a over-heat alarm message playback.
   }
@@ -982,13 +983,13 @@ void drawSubPage(String title, int pg, uint32_t bgColor, uint32_t marginColor) {
 void drawInfoPage(void)
 {
   drawSubPage("ROD INFORMATION", PG_INFO, ILI9341_BLACK, ILI9341_WHITE);
- 
+
   tft.setFont(&FreeSans12pt7b);
   tft.setTextSize(1);
   tft.setTextColor(ILI9341_YELLOW);
-  
+
   tft.drawRoundRect(43, 60, 234, 50, 8, WHITE);
-  
+
   tft.drawRoundRect(44, 61, 232, 48, 8, WHITE);
   tft.fillRoundRect(45, 62, 230, 46, 8, 0x2A86);
   tft.setCursor(120, 93);
@@ -1034,7 +1035,7 @@ void drawInfoPageRod(int pageNum, const char* rodName, const char* mainInfo[4], 
 // *********************************************************************************************
 // Information page for 6011 rod.
 void drawInfoPage6011(void) {
-  const char* mainInfo[4] =                 { 
+  const char* mainInfo[4] =                 {
                     "3/32\" 2.4mm 40-90A",
                     "1/8\"   3.2mm 75-125A",
                     "5/32\" 4.0mm 110-165A",
@@ -1052,7 +1053,7 @@ void drawInfoPage6011(void) {
 // *********************************************************************************************
 // Information page for 6013 rod.
 void drawInfoPage6013(void) {
-  const char* mainInfo[4] =                 { 
+  const char* mainInfo[4] =                 {
                     "1/16\" 1.6mm 20-45A",
                     "3/32\" 2.4mm 40-90A",
                     "1/8\"   3.2mm 80-130A",
@@ -1069,7 +1070,7 @@ void drawInfoPage6013(void) {
 
 // Information page for 7018 rod.
 void drawInfoPage7018(void) {
-  const char* mainInfo[4] =                 { 
+  const char* mainInfo[4] =                 {
                     "3/32\" 2.4mm 70-120A",
                     "1/8\"   3.2mm 110-165A",
                     "5/32\" 4.0mm 150-220A",
@@ -1096,8 +1097,8 @@ void drawCaution(int x, int y, bool state)
   }
   else {
     switch(page) {
-      case PG_HOME: 
-        color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE; 
+      case PG_HOME:
+        color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
         break;
       case PG_INFO:
       case PG_INFO_6011:
@@ -1109,7 +1110,7 @@ void drawCaution(int x, int y, bool state)
         color = ILI9341_RED;
         break;
       default:
-        color = ILI9341_WHITE; 
+        color = ILI9341_WHITE;
     }
   }
 
@@ -1188,7 +1189,7 @@ void drawHomePage()
 
   unsigned int color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
   drawPageFrame(color, ILI9341_CYAN);
-  
+
   drawAmpsBox();
   displayOverTempAlert(); // Display temperature warning if too hot.
 
@@ -1386,12 +1387,12 @@ void showBleStatus(int msgNumber)
 
   tft.setFont(&FreeSansBold12pt7b);
   tft.setTextSize(1);
-  tft.setTextColor(color);  
+  tft.setTextColor(color);
   drawCenteredText(COORD(FBBOX), label, ILI9341_WHITE);
 
   // Update Bluetooth On/Off Switch button
   tft.drawBitmap(FBBOX_X + FBBOX_W + 17, FBBOX_Y, PowerSwBitmap, 40, 40, bleSwitch == BLE_OFF ? ILI9341_RED : ILI9341_GREEN);
-  
+
 }
 
 // *********************************************************************************************
@@ -1431,7 +1432,7 @@ void updateVolumeIcon(void)
 
     if (spkrVolSwitch >= VOL_MED) {
       fillArc(SNDBOX_X + 8, SNDBOX_Y + 25, 62, 8, 25, 25, 2, ILI9341_WHITE);   // 1st Short arc
-    
+
       if ((spkrVolSwitch >= VOL_HI) && (spkrVolSwitch < XHI_VOL)) {          // Audio High
         fillArc(SNDBOX_X + 18, SNDBOX_Y + 25, 56, 10, 25, 25, 2, ILI9341_WHITE); // 2nd Short arc
       }

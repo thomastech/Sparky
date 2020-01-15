@@ -1,7 +1,7 @@
 /*
    File: PulseWelder.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
+   Version: 1.2
    Creation: Sep-11-2019
    Revised: Dec-29-2019.
    Public Release: Jan-03-2020
@@ -44,6 +44,12 @@
         Lift PIN-10 on SG3525A PWM Controller IC. Connect lifted pin to ESP32's SHDN_PIN (default is ESP32 GPIO-15).
         PWM Shutdown feature must be enabled in config.h (via PWM_ARC_CTRL define).
     - Added hogthrob's checkAndUpdateEEPROM() function & IS_IN_BOX() macro to streamline screen.cpp code.
+    V1.2, Jan-14-2020:
+     - Incorporated hogthrob's PR #5:
+       No functional changes, maintanence only.
+       Updated INA219 library, improved response time.
+       Removed monitor port directive from platformio.ini.
+       Sound and Screen Handling refactoring.
 
    Notes:
    1. This "Arduino" project must be compiled with VSCode / Platformio. Do not use the Arduino IDE.
@@ -232,7 +238,7 @@ void setup()
 
  // Welcome the user with a promotional voice message.
   spkr.play(promoMsg);
-  
+
   // Done with initialization. Show Home Page or Hardware Error Page.
   if (systemError == ERROR_NONE) {  // Hardware is OK.
     drawHomePage();

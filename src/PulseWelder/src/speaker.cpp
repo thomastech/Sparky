@@ -1,10 +1,10 @@
 /*
    File: speaker.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
-   Creation: Jan-15-2020
-   Revised:
-   Public Release:
+   Version: 1.2
+   Creation: Jan-14-2020
+   Revised: Jan-14-2020
+   Public Release: Jan-15-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
@@ -56,7 +56,7 @@ Speaker::Speaker() {
     promoMsg.Volume    = 127;           // Maximum Sub-Volume (0-127 allowed).
     Sequence.Volume = 127;         // Maximum sub-volume.
     Sequence.Repeat = 0;           // Don't Repeat.
- 
+
 }
 void Speaker::stopSounds() {
   DacAudio.StopAllSounds();
@@ -124,13 +124,13 @@ void Speaker::limitHit(XT_PlayListItem_Class& sound, boolean condition) {
 }
 
 // *********************************************************************************************
-// Add the wav file item for the 0-9 number passed by calller
+// Add the wav file item for the 0-9 number passed by caller
 static void AddNumberToSequence(int theNumber) {
   static XT_Wav_Class* digit[10] = { &n000, &n001, &n002, &n003, &n004, &n005, &n006, &n007, &n008, &n009 };
   Sequence.AddPlayItem( (theNumber < 10 && theNumber >= 0) ? digit[theNumber] : &silence100ms );
 }
 
-void Speaker::addDigitSounds(uint32_t val) {        
+void Speaker::addDigitSounds(uint32_t val) {
         if (spkrVolSwitch != VOL_OFF) {
           const int max_num_digits = 10; // 32 bits == 10 base10 digits max.
           uint32_t digits[max_num_digits];
@@ -140,9 +140,10 @@ void Speaker::addDigitSounds(uint32_t val) {
             val /= 10; // shift to next digit
           }
           if (count == 0) { count = 1; digits[0] = 0; }
-          // special case for value == 0 
-
-          for (; count; count-- ) { AddNumberToSequence(digits[count]); }
+          // special case for value == 0
+          for (; count; count-- ) {
+            AddNumberToSequence(digits[count-1]);
+          }
           DacAudio.Play(&Sequence, true);
         }
 }
