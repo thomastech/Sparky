@@ -98,8 +98,60 @@ bool spiInitComplete  = false;              // SPI Port Initialization is Comple
 byte spkrVolSwitch    = DEF_SET_VOL;        // Audio Volume, five levels.
 byte systemError      = ERROR_NONE;         // General hardware error state (bad current sensor or bad Digital Pot).
 unsigned int Volts    = 0;                  // Measured Welding Volts.
-
+ShutdownPinAvail shtdnpin = UNKNOWN;        // Shutdown pin detection result, initial valuse says it has not been executed     
 // *********************************************************************************************
+
+
+
+ShutdownPinAvail shutdownCapabilityDetection()
+{
+  ShutdownPinAvail retval = UNKNOWN;
+  byte savedArcSwitch = arcSwitch;
+  
+  unsigned long now = millis();
+
+  controlArc(ARC_ON, VERBOSE_OFF);
+
+  resetVdcBuffer();
+  resetCurrentBuffer();
+
+  while ( millis() < now + 50 && Volts == 0 )
+  {
+    measureVoltage();
+    measureCurrent();
+  }
+
+  Serial.println(millis() - now);
+  Serial.println(Amps);
+
+  uint32_t startVolts = Volts;
+  if (startVolts > 0 && Amps < 1)
+  {
+    controlArc(ARC_OFF, VERBOSE_OFF);
+
+    now = millis();
+
+    while ( millis() < now + 10)
+    {
+      measureVoltage();
+    }
+    retval = Volts == 0 ? PRESENT : NOT_PRESENT;
+
+  } 
+  else {
+    retval = Amps == 0 ? ERROR_NO_VOLTAGE : ERROR_SHORTCIRCUIT;
+  }
+
+  if (retval != ERROR_SHORTCIRCUIT) {
+    controlArc(savedArcSwitch, VERBOSE_OFF);
+  }
+  else {
+    controlArc(ARC_OFF, VERBOSE_OFF);
+  } 
+
+  return retval;
+}
+
 
 void setup()
 {
@@ -209,6 +261,7 @@ void setup()
     systemError |= ERROR_DIGPOT;
   }
 
+
   // Set Arc Weld Current (Update Digital Pot and PWM Control pin).
   controlArc(arcSwitch, VERBOSE_ON);
 
@@ -221,11 +274,14 @@ void setup()
   displaySplash(); // Show Splash Image.
   scanBlueTooth(); // Find the BLE handheld iTag Button FOB. Will take a few seconds.
 
-  while (millis() < currentMillis + SPLASH_TIME) {} // Give user time to see Splash Screen.
+  while (millis() < currentMillis + (SPLASH_TIME)) {} // Give user time to see Splash Screen.
 
   // Misc House Keeping, data initialization
   resetCurrentBuffer();
   resetVdcBuffer();
+
+  shtdnpin = shutdownCapabilityDetection();
+  Serial.println(String("Shutdown Pin Detection Result: " + String(shtdnpin)));
 
   // Setup Hardware Interrupts (Not used).
   // attachInterrupt(interruptPin, isr, FALLING);
@@ -291,6 +347,7 @@ void loop()
   showHeartbeat();       // Display Flashing Heartbeat icon.
   checkForAlerts();      // Check for alert conditions.
   processScreen();       // Process Menu System (touch screen).
+  detectArcState();      // analyze current arc state
   pulseModulation();     // Update the Arc Pulse Current if pulse mode is enabled.
   remoteControl();       // Check the BLE FOB remote control for button presses.
 }

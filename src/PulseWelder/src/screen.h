@@ -39,6 +39,8 @@
 #define PG_INFO_7018 23       // E-7018 Rod Info Page.
 #define PG_SET 30             // Settings Page.
 #define PG_ERROR 40           // Error (Caution) Page.
+#define PG_SET_MODE 50        // Settings Page for Operational Mode
+
 #define PG_RD_TIME_MS 45000   // Timeout time (mS) for reading a rod information page automatic before exit.
 #define MENU_RD_TIME_MS 10000 // Timeout time (mS) for chosing a menu item before automatic exit.
 

@@ -220,4 +220,57 @@ void resetVdcBuffer(void)
   }
 }
 
+int arcState = 0;
+int prevArcState = 0;
+bool arcStateChanged = false;
+unsigned long arcStateChangeTime = 0;
+// 1 = Open Circuit, No Arc
+// 2 = Short Circuit, No Arc
+// 3 = Short Circuit, No Arc, Low Energy
+// 4 = Arc?
+
+void detectArcState()
+{
+  const int ampLimit = 20;
+  int newArcState = 0;
+  static uint32_t shortTimer = 0;
+
+  if (Volts >= 1 && Amps < ampLimit) {
+    newArcState = 1;
+  } 
+  else if (Volts < 1 && Amps >= ampLimit) {
+    if (arcState != 2) {
+      uint32_t now = millis();
+      if (shortTimer < now - 1000) {
+        shortTimer = now;
+      } 
+      else if (shortTimer < now - 250) {
+        newArcState = 2;
+      }
+    } 
+  }
+  else if (Volts < 1 && Amps >= 0 && Amps < ampLimit) {
+    newArcState = 3;
+  }
+  else {
+    newArcState = 4;
+  }
+
+  if (newArcState != 0 && newArcState != 2) {
+    shortTimer = 0; // detection of any other valid state resets short timer
+  } 
+
+  if (newArcState != arcState && newArcState != 0)
+  {
+    unsigned long now = millis();
+    unsigned long delta = now - arcStateChangeTime;
+    arcStateChangeTime = now;
+    arcStateChanged = true;
+    Serial.println("Arc State Change from " + String(arcState) + " to " + String(newArcState) + " after " + String(delta) + "ms" );
+    Serial.println("Volts " + String(Volts) + " Amps " + String(Amps));
+    prevArcState = arcState;
+    arcState = newArcState;
+  }  
+}
+
 // EOF

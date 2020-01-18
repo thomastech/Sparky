@@ -39,10 +39,38 @@ extern byte pulseSwitch;     // Pulse Mode On/Off Flag. Pseudo Boolean; byte dec
 // Check Welder's OC Led signal for alert condition. Could be over-heat or over-current state.
 void checkForAlerts(void)
 {
-    overTempAlert = !digitalRead(OC_PIN); // Get OC Warning LED State.
-    if(overTempAlert) {
-        arcSwitch = ARC_OFF;
-        disableArc(VERBOSE_OFF);         // Disable Arc current.
+    static unsigned long overTempStart = 0;
+
+    bool overTemp = !digitalRead(OC_PIN); // Get OC Warning LED State.
+
+// #define TEST_OC_ALARM
+#ifdef TEST_OC_ALARM
+    // if activated, this code will fake an overtemp alarm briefly after current larger than 10A starts flowing 
+    // and later current that alarm off and repeat the cycle indefinitely  
+    static int testCounterOn, testCounterOff;
+    if (testCounterOff == 0)
+    {
+      testCounterOn = 30000;
+      testCounterOff = 30000;
+    }
+
+    testCounterOn = (testCounterOn > 0 && Amps > 50)? testCounterOn-1 : testCounterOn;
+    testCounterOff = (testCounterOff > 0 && testCounterOn == 0)? testCounterOff-1 : testCounterOff;
+    overTemp |= testCounterOn == 0;
+#endif
+
+    if(overTemp) {
+        if (overTempStart == 0) {
+          overTempStart = millis();
+        }
+        else if (millis() > overTempStart + 100) {
+          overTempAlert = true;
+          controlArc(ARC_OFF, VERBOSE_OFF);         // Disable Arc current.
+        }
+    }
+    else {
+        overTempAlert = false;
+        overTempStart = 0;
     }
 }
 
@@ -220,8 +248,8 @@ void remoteControl(void)
       spkr.addSoundList({&beep});
     }
 
-    remoteControlCurrentValue(click);
-    //remoteControlCurrentOnOff(click);
+    //remoteControlCurrentValue(click);
+    remoteControlCurrentOnOff(click);
 
   }
 }
@@ -240,6 +268,14 @@ float PulseFreqHz(void)
   return freq;
 }
 
+extern int arcState;
+extern int prevArcState;
+extern bool arcStateChanged;
+
+StartMode startMode = SCRATCH_START;
+std::list<StartMode> startModeList = { SCRATCH_START, LIFT_START, SPOT_MODE };
+
+
 // *********************************************************************************************
 // Modulate the Welding Arc Current if Pulse Mode is Enabled.
 // Modulation freq is provided by PulseFreqHz() function (user's pulse frequency setting).
@@ -248,44 +284,85 @@ float PulseFreqHz(void)
 // On new rod strikes the pulse modulation is delayed to allow the arc to fully ignite.
 void pulseModulation(void)
 {
-  int ampVal;
   static long previousMillis = 0;
   static long arcTimer = 0;
-  float period               = 0; // Pulse period.
+ 
+  if (arcSwitch == ARC_ON) {
+    bool setPot                   = false;
+    byte desiredAmps              = setAmps;
+    static uint32_t arcStartTimer = 0;
 
-  if (arcSwitch == ARC_ON && pulseSwitch == PULSE_OFF) { // Pulse mode is disabled.
-    if (millis() > previousMillis + 500) {               // Refresh Digital POT every 0.5Sec.
-        previousMillis = millis();
-        arcTimer = millis();
-        setPotAmps(setAmps, VERBOSE_OFF);
-    }
-    pulseState = false;                      // Pulsed current is Off.
-  }
-  else if (arcSwitch == ARC_ON) {
-    period = (1.0 / PulseFreqHz()) / 0.002;  // Convert freq to mS/2.
-    // Serial.println("mS: " + String(period)); // Debug
+    if ((startMode == LIFT_START) && (arcState != 4)) {
+      static bool liftDetected = false;
 
-    if (millis() > previousMillis + (long)(period)) {
+      if (arcState != 1)
+      {
+        liftDetected = false;
+      }
+
+      if ((arcState == 2) && arcStateChanged)
+      {
+        Serial.println("Stick detected, set arc force current");
+      }
+
+      if ((prevArcState == 3) && (arcState == 1))
+      {
+        if (arcStateChanged) {
+          arcStartTimer = millis();
+          Serial.println("Lift detected, set start current");
+          liftDetected = true;
+        }
+        else {
+          if (liftDetected && (millis() > (arcStartTimer + 1500)))
+          {
+            Serial.println("Lift detected, but no arc, set detection current");
+            liftDetected = false;
+          }
+        }
+      }
+      arcStateChanged = false;            // processed arcStateChange event
+      desiredAmps     = liftDetected == true ? setAmps : 1;
+      setPot          = true;             // force setting
+    }
+    else if (pulseSwitch == PULSE_OFF) {  // Pulse mode is disabled.
+      if (millis() > previousMillis + 500) {// Refresh Digital POT every 0.5Sec.
         previousMillis = millis();
-        pulseState = !pulseState;
-        drawPulseLightning();                // Update the Pulse Arc icon.
-        if(Amps < PULSE_AMPS_THRS) {         // Current too low, don't pulse modulate current.
-            arcTimer = millis();
-            setPotAmps(setAmps, VERBOSE_OFF);
+        arcTimer       = millis();
+        setPot         = true;
+      }
+      pulseState = false;                        // Pulsed current is Off.
+    }
+    else {
+      float period = (1.0 / PulseFreqHz()) / 0.002;// Convert freq to mS/2.
+      // Serial.println("mS: " + String(period)); // Debug
+
+      if (millis() > previousMillis + (long)(period)) {
+        setPot = true;
+
+        previousMillis = millis();
+        pulseState     = !pulseState;
+        drawPulseLightning();      // Update the Pulse Arc icon.
+
+        if (Amps < PULSE_AMPS_THRS) {// Current too low, don't pulse modulate current.
+          arcTimer    = millis();
+          desiredAmps = setAmps;
         }
-        else if(millis() > arcTimer+ ARC_STABLIZE_TM) { // Arc should be stabilized, OK to modulate.
-           if(pulseState == PULSE_ON) {      // Pulsed welding current cycle.
-                ampVal = (int)(setAmps) * pulseAmpsPc / 100; // Modulated with Pulse Current (%) Setting.
-                ampVal = constrain(ampVal, MIN_SET_AMPS, MAX_SET_AMPS);
-                setPotAmps((byte)(ampVal), VERBOSE_OFF);
-            }
-            else {                           // Normal welding current cycle.
-                setPotAmps(setAmps, VERBOSE_OFF);
-            }
+        else if (millis() > arcTimer + ARC_STABLIZE_TM) { // Arc should be stabilized, OK to modulate.
+          if (pulseState == PULSE_ON) {                   // Pulsed welding current cycle.
+            int ampVal = (int)(setAmps) * pulseAmpsPc / 100;// Modulated with Pulse Current (%) Setting.
+            desiredAmps = constrain(ampVal, MIN_SET_AMPS, MAX_SET_AMPS);
+          }
+          else {                                          // Normal welding current cycle.
+            desiredAmps = setAmps;
+          }
         }
+      }
+    }
+
+    if (setPot) {
+      setPotAmps(desiredAmps, VERBOSE_OFF);
     }
   }
-//  Serial.println("Amps: " + String(setAmps) + ", bg: " + String(ampVal));  // Debug.
 }
 
 // *********************************************************************************************

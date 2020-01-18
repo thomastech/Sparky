@@ -16,7 +16,7 @@
 #define __PULSE_WELDER_H__
 
 #include "BLEDevice.h"
-
+#include <list>
 // *********************************************************************************************
 // VERSION STRING: Must be updated with each public release! The version is shown on the boot screen.
 #define VERSION_STR "V1.2"
@@ -148,10 +148,24 @@
 // *********************************************************************************************
 enum StartMode {
   SCRATCH_START,
-  LIFT_START
+  LIFT_START,
+  SPOT_MODE,
 };
 
 extern StartMode startMode;
+extern std::list<StartMode> startModeList;
+
+enum ShutdownPinAvail
+{
+  UNKNOWN,
+  PRESENT,
+  NOT_PRESENT,
+  DETECTION_IMPOSSIBLE,
+  ERROR_NO_VOLTAGE,
+  ERROR_SHORTCIRCUIT,
+};
+
+extern ShutdownPinAvail shtdnpin;
 
 // Amps & Volts Measurement Prototypes
 void initVdcAdc(void);

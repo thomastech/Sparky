@@ -56,6 +56,22 @@ static long previousEepMillis   = 0; // Previous Home Page time.
 
 #define IS_IN_BOX(BOXNAME) (isInBox(x, y, COORD(BOXNAME)))
 
+// local functions signatures
+static void drawOpModeSettings(bool update_only);
+static void drawOpModeSettingsPage();
+
+typedef std::pair<bool  (*)(),void  (*)()> touchFunctionHit;
+typedef std::list<touchFunctionHit> touchFunctionHitList;
+
+void handleTouchHitList(touchFunctionHitList& subPages) {
+  touchFunctionHitList::iterator it;
+
+  for (it = subPages.begin(); it != subPages.end() && (*it).first() == false; it++) {}
+
+  if (it != subPages.end()) {
+    (*it).second();
+  }
+}
 
 // *********************************************************************************************
 // Change Welder's Pulse Mode amps, Increase or decrement from 10% to 90%.
@@ -127,6 +143,48 @@ bool adjustPulseFreq(bool direction)
 
   // Refresh the Pulse Entry display (if on page PG_SET)
   drawPulseHzSettings(true);
+
+  // Let the caller know that we would like to update the EEPROM if the value has changed.
+  eepromActive      = true;     // Request EEPROM save for new settings.
+  previousEepMillis = millis(); // Set EEPROM write delay timer.
+
+  return limitHit;
+}
+
+// *********************************************************************************************
+// Change Welder's Operation Mode
+// Used by processScreen().
+// On exit, true returned if end of travel was reached. 
+bool changeOpMode(bool direction)
+{
+  bool limitHit = false;
+
+  std::list<StartMode>::iterator modeIt  = find(startModeList.begin(),startModeList.end(), startMode);
+
+  if (modeIt != startModeList.end()) 
+  {
+    if (direction == INCR) { 
+      ++modeIt;
+    }
+    else {
+      if (modeIt !=  startModeList.begin()) {
+        --modeIt;
+      } 
+      else {
+        limitHit = true;
+      }
+    }  
+  } 
+
+  if (modeIt == startModeList.end())  {
+    modeIt--;
+    limitHit = true;
+  }
+
+  startMode = *modeIt;
+
+  // Refresh the Pulse Entry display (if on page PG_SET)
+  drawOpModeSettings(true);
 
   // Let the caller know that we would like to update the EEPROM if the value has changed.
   eepromActive      = true;     // Request EEPROM save for new settings.
@@ -281,12 +339,6 @@ void handleRodInfoPage(String rodName, bool& wasTouched)
   }
 }
 
-// *********************************************************************************************
-// Process the TouchScreen actions.
-// Display screen pages, get touch inputs, perform actions.
-// All screens and touch events are performed here.
-void processScreen(void)
-{
   bool limitHit                  = false;         // Control reached end of travel.
   static bool setAmpsActive      = false;         // Amps Setting flag.
   long bleWaitMillis             = millis();      // BLE Scan Timer.
@@ -298,6 +350,55 @@ void processScreen(void)
   static long homeMillis         = 0;             // Home Page timer for data refresh.
   static long previousHomeMillis = 0;             // Previous Home Page timer.
   static long setAmpsTimer       = 0;             // Amps setting changed by user timer, for Amps refresh.
+
+/**
+ * @brief handles return to main page upon pressing return and if no touch has been detected 
+ * @returns false if user code should be running
+ */
+bool handleStandardSubPageActions(const char* pageName)
+{
+    bool retval = true;
+    if (!ts.touched())
+    {
+      wasTouched = false;
+
+      if (millis() > abortMillis + MENU_RD_TIME_MS) {
+        Serial.println(String(pageName) + " page timeout, exit.");
+        drawHomePage();
+        spkr.lowBeep();
+      }
+    }
+    else if (ts.touched() && !wasTouched) {
+      abortMillis = millis();
+      wasTouched      = true;
+      getTouchPoints();
+
+      if (IS_IN_BOX(RTNBOX))// Return button. Return to homepage.
+      {
+        Serial.println(String("Exit ") + pageName + ", retured to home page");
+        drawHomePage();
+
+        spkr.lowBeep();
+      } 
+      else {
+        retval = false;
+      }
+    } 
+    
+    return retval;
+}
+
+void handleStandardSubPage(const char* pageName, touchFunctionHitList& buttons) {
+  if (handleStandardSubPageActions(pageName) == false) {
+    handleTouchHitList(buttons);
+  }
+}
+// *********************************************************************************************
+// Process the TouchScreen actions.
+// Display screen pages, get touch inputs, perform actions.
+// All screens and touch events are performed here.
+void processScreen(void)
+{
 
   if (eepromActive)
   {
@@ -352,7 +453,6 @@ void processScreen(void)
       if (IS_IN_BOX(ARCBOX))
       {
         if (overTempAlert) {// Alarm state. Do not enable welding current!
-          arcSwitch = ARC_OFF;
           Serial.println("Alarm State! Arc Current Cannot be Enabled.");
           spkr.bloop();
         }
@@ -406,7 +506,8 @@ void processScreen(void)
       }
       else if (IS_IN_BOX(INFOBOX))
       {// Info button pressed
-        drawInfoPage();
+        // drawInfoPage();
+        drawOpModeSettingsPage();
         spkr.highBeep();
       }
       else if (IS_IN_BOX(SETBOX))
@@ -418,60 +519,43 @@ void processScreen(void)
         drawSettingsPage();
       }
 
-      else if (IS_IN_BOX(AUPBOX))
+      else if (IS_IN_BOX(AUPBOX) || IS_IN_BOX(ADNBOX))
       {                                               // Increase Amps Setting
         if ((arcSwitch == ARC_OFF) || overTempAlert) {// Welding current disabled.
           Serial.println("Arc Current Off: Amp setting cannot be changed.");
           spkr.bloop();
         }
         else {
-          setAmpsTimerFlag = true;
-          setAmpsTimer     = millis();
-          setAmpsActive    = true;
-          setAmps++;
-          setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-          setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
-          displayAmps(true);              // Refresh displayed value.
-          arrowMillis       = millis();
-          previousEepMillis = millis();
-          eepromActive      = true;       // Request EEProm Write after timer expiry.
+          int valChange = 0;
 
-          if (setAmps < MAX_SET_AMPS) {
-            spkr.bleep();
-          }
-          else {
-            spkr.bloop();
-          }
-        }
-      }
-
-      else if (IS_IN_BOX(ADNBOX))
-      {                                               // Decrease Amps Setting
-        if ((arcSwitch == ARC_OFF) || overTempAlert) {// Welding current disabled.
-          Serial.println("Arc Current Off: Amp setting cannot be changed.");
-          spkr.bloop();
-        }
-        else {
-          setAmpsTimerFlag = true;
-          setAmpsTimer     = millis();
-          setAmpsActive    = true;
-
-          if (setAmps > 0) {
-            setAmps--;
+          if (IS_IN_BOX(AUPBOX)) {
+            valChange = 1;
+          } else if (IS_IN_BOX(ADNBOX)) {
+            valChange = -1;
           }
 
-          setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-          setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
-          displayAmps(true);              // Refresh displayed value.
-          arrowMillis       = millis();
-          previousEepMillis = millis();
-          eepromActive      = true;       // Request EEProm Write after timer expiry.
+          if (valChange != 0)
+          {
+            setAmpsActive = true;
+            // make sure we are not going below 0
+            setAmps           = constrain((int)setAmps + valChange, MIN_SET_AMPS, MAX_SET_AMPS);
+            setAmpsTimerFlag = true;
+            setAmpsTimer     = millis();
 
-          if (setAmps > MIN_SET_AMPS) {
-            spkr.bleep();
-          }
-          else {
-            spkr.bloop();
+            arrowMillis       = millis();
+            previousEepMillis = millis();
+            eepromActive      = true;       // Request EEProm Write after timer expiry.
+
+            
+            setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
+            displayAmps(true);              // Refresh amps value.
+
+            if ((setAmps == MAX_SET_AMPS) || (setAmps == MIN_SET_AMPS)) {
+                spkr.bloop();
+            }
+            else {
+                  spkr.bleep();
+            }
           }
         }
       }
@@ -509,7 +593,8 @@ void processScreen(void)
 
           if (valChange != 0)
           {
-            setAmps         += valChange;
+            // make sure we are not going below 0
+            setAmps           = constrain((int)setAmps + valChange, MIN_SET_AMPS, MAX_SET_AMPS);
             setAmpsTimerFlag = true;
             setAmpsTimer     = millis();
 
@@ -524,7 +609,6 @@ void processScreen(void)
             previousEepMillis = millis();
             eepromActive      = true;       // Request EEProm Write after timer expiry.
 
-            setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
             setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
             displayAmps(true);              // Refresh amps value.
 
@@ -546,51 +630,12 @@ void processScreen(void)
   }
   else if (page == PG_INFO)// Information page. All display elements are drawn when drawInfoPage() is called.
   {
-    if (!ts.touched())
-    {
-      wasTouched = false;
-
-      if (millis() > abortMillis + MENU_RD_TIME_MS) {
-        Serial.println("Main Info page timeout, exit.");
-        drawHomePage();
-
-        spkr.lowBeep();
-      }
-    }
-    else if (ts.touched() && !wasTouched) {
-      abortMillis = millis();
-      wasTouched      = true;
-      getTouchPoints();
-
-      if (IS_IN_BOX(RTNBOX))// Return button. Return to homepage.
-      {
-        Serial.println("Exit Info, retured to home page");
-        drawHomePage();
-
-        spkr.lowBeep();
-      }
-      else if (isInBox(x, y, 45, 70, 225, 30))
-      {
-        abortMillis = millis();
-        drawInfoPage6011();
-
-        spkr.highBeep();
-      }
-      else if (isInBox(x, y, 45, 125, 225, 30))
-      {
-        abortMillis = millis();
-        drawInfoPage6013();
-
-        spkr.highBeep();
-      }
-      else if (isInBox(x, y, 45, 175, 225, 30))
-      {
-        abortMillis = millis();
-        drawInfoPage7018();
-
-        spkr.highBeep();
-      }
-    }
+    touchFunctionHitList subPages = {
+        touchFunctionHit([] () { return isInBox(x, y, 45, 75, 225, 30); }, drawInfoPage6011),
+        touchFunctionHit([] () { return isInBox(x, y, 45, 125, 225, 30); }, drawInfoPage6013),
+        touchFunctionHit([] () { return isInBox(x, y, 45, 175, 225, 30); }, drawInfoPage7018),
+    };
+    handleStandardSubPage("Info", subPages);
   }
 
   else if (page == PG_INFO_6011)// Information page on 6011 Rod.
@@ -608,70 +653,48 @@ void processScreen(void)
 
   else if (page == PG_SET)// Settings Page
   {
-    if (!ts.touched())
+    if (handleStandardSubPageActions("Machine Settings") == false)
     {
-      wasTouched = false;
-
-      if (millis() > abortMillis + PG_RD_TIME_MS)
-      {
-        Serial.println("Settings page timeout, exit.");
-        abortMillis = millis();// Reset the settings page's keypress abort timer.
-        drawHomePage();
-
-        spkr.lowBeep();
-      }
-    }
-    else if (ts.touched() && !wasTouched)
-    {
-      abortMillis = millis();
-      wasTouched          = true;
-      getTouchPoints();
-
-      if (IS_IN_BOX(RTNBOX))// Return button. Return to home page.
-      {
-        Serial.println("User Settings page, retured to Home page");
-        abortMillis = millis();
-        drawHomePage();
-
-        spkr.lowBeep();
-      }
-      else if (isInBox(x, y, PSBOX_X  + PSBOX_W - 45, PSBOX_Y, 45, PSBOX_H))
-      {
-        limitHit = adjustPulseFreq(INCR);
-        Serial.println("Increased Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Increase Pulse Freq.
-
+      static auto pulseFreqFunc = [] (int mode) 
+      { 
+        limitHit = adjustPulseFreq(mode);
+        Serial.println(String(mode == INCR? "Increased" : "Decreased") + " Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Change Pulse Freq.
         spkr.limitHit(blip, limitHit);
+      };
+
+      static auto pulseAmpsFunc = [] (int mode) 
+      { 
+        limitHit = adjustPulseAmps(mode);
+        Serial.println(String(mode == INCR? "Increased" : "Decreased") + " Pulse Current: " + String(pulseAmpsPc) + "%");// Change Pulse Bg Current.
+        spkr.limitHit(blip, limitHit);
+      };
+
+      if (isInBox(x, y, PSBOX_X  + PSBOX_W - 45, PSBOX_Y, 45, PSBOX_H))  {
+        pulseFreqFunc(INCR);
       }
       else if (isInBox(x, y, PSBOX_X, PSBOX_Y, 45, PSBOX_H))
       {
-        limitHit = adjustPulseFreq(DECR);
-        Serial.println("Decreased Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Decrease Pulse Freq.
-
-        spkr.limitHit(bleep, limitHit);
+        pulseFreqFunc(DECR);
       }
       else if (isInBox(x, y, PCBOX_X, PCBOX_Y, 45, PCBOX_H))
       {
-        limitHit = adjustPulseAmps(DECR);
-        Serial.println("Decreased Pulse Current: " + String(pulseAmpsPc) + "%");// Decrease Pulse Amps (%).
-
-        spkr.limitHit(bleep, limitHit);
+        pulseAmpsFunc(DECR);
       }
       else if (isInBox(x, y, PCBOX_X  + PCBOX_W - 45, PCBOX_Y, 45, PCBOX_H))
       {
-        limitHit = adjustPulseAmps(INCR);
-        Serial.println("Increased Pulse Current: " + String(pulseAmpsPc) + "%");// Increase Pulse Amps (%).
-
-        spkr.limitHit(blip, limitHit);
+        pulseAmpsFunc(INCR);
       }
       else if (IS_IN_BOX(BOBOX))
       {
         bleSwitch    = (bleSwitch == BLE_ON ? BLE_OFF : BLE_ON);// Pseudo Boolean toggle.
-        eepromActive = true;                                    // Request EEPROM save for new settings.
 
         if ((bleSwitch == BLE_OFF) && (isBleServerConnected() == true)) {
           stopBle();
         }
+
+        eepromActive = true;                                    // Request EEPROM save for new settings.
         previousEepMillis = millis();// Set EEPROM write delay timer.
+
         showBleStatus(BLE_MSG_AUTO); // Update the Bluetooth On/Off button.
         Serial.println("Bluetooth Mode: " + String(bleSwitch == BLE_ON ? "ON" : "OFF"));
 
@@ -724,26 +747,39 @@ void processScreen(void)
       }
     }
   }
+else if (page == PG_SET_MODE)// Settings Page
+  {
+    static auto changeModeFunc = [] (int mode) {
+                  limitHit = changeOpMode(mode);
+                  Serial.println("Changed Operation Mode: " + String(startMode) );
+                  spkr.limitHit(blip, limitHit);
+    };
+
+    touchFunctionHitList buttons = {
+        touchFunctionHit(
+          [] () { return isInBox(x, y, PSBOX_X  + PSBOX_W - 45, PSBOX_Y, 45, PSBOX_H); },
+          [] () { changeModeFunc(INCR);  } ),
+
+        touchFunctionHit(
+          [] () { return isInBox(x, y, PSBOX_X, PSBOX_Y, 45, PSBOX_H); },
+          [] () { changeModeFunc(DECR); } ),
+    };
+    handleStandardSubPage("Mode Settings", buttons);
+  }
 
   else if (page == PG_ERROR)// System Error page.
   {
-    if (!ts.touched())
-    {
-      wasTouched = false;
-    }
-    else if (ts.touched() && !wasTouched)
-    {
-      wasTouched = true;
-      getTouchPoints();
-
-      if (IS_IN_BOX(SCREEN))// Press anywhere on screen to main info page.
-      {
-        Serial.println("User Proceeded to Home Page despite Error Warning.");
-        drawHomePage();
-
-        spkr.lowBeep();
-      }
-    }
+    touchFunctionHitList buttons = {
+        touchFunctionHit(
+          [] () { return IS_IN_BOX(SCREEN); },
+          [] () { 
+                  Serial.println("User Proceeded to Home Page despite Error Warning.");
+                  drawHomePage();
+                  spkr.lowBeep();
+              }
+          ),
+    };
+    handleStandardSubPage("Error", buttons);
   }
 }
 
@@ -985,12 +1021,6 @@ void drawSubPage(String title, int pg, uint32_t bgColor, uint32_t marginColor) {
 void drawInfoPage(void)
 {
   drawSubPage("ROD INFORMATION", PG_INFO, ILI9341_BLACK, ILI9341_WHITE);
-
-// *********************************************************************************************
-// Information page.
-void drawInfoPage(void)
-{
-  drawSubPage("ROD INFORMATION", PG_INFO, ILI9341_BLACK, ILI9341_WHITE);
  
   tft.setFont(&FreeSans12pt7b);
   tft.setTextSize(1);
@@ -1150,6 +1180,18 @@ void drawHeart(int x, int y, bool state)
 }
 
 // *********************************************************************************************
+// Paint the heart icon, state determines color.
+// If Bluetooth is on, show bluetooth icon instead of heart.
+void drawPinState(int x, int y)
+{
+  tft.fillRoundRect(x - 1, y - 1, 18, 18, 5, ILI9341_WHITE);
+
+  int color = shtdnpin == PRESENT ? ILI9341_BLUE : shtdnpin == ERROR_SHORTCIRCUIT ? ILI9341_ORANGE : ILI9341_RED;
+  
+  tft.drawBitmap(x, y, heartBitmap, 16, 16, color);
+}
+
+// *********************************************************************************************
 // Home Page.
 void drawErrorPage()
 {
@@ -1209,6 +1251,7 @@ void drawHomePage()
   unsigned int color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
   drawPageFrame(color, ILI9341_CYAN);
   drawAmpsBox();
+
   displayOverTempAlert(); // Display temperature warning if too hot.
 
   // Draw Menu Icons
@@ -1223,14 +1266,8 @@ void drawHomePage()
   // Settings Icon
   drawHomeMenuButton(COORD_R(SETBOX), settingsBitmap, BUTTONBACKGROUND);
 
-  unsigned int arrowColor;
-  if(overTempAlert) {
-      arrowColor = ILI9341_LIGHTGREY;
-  }
-  else {
-   arrowColor = arcSwitch == ARC_ON ? ILI9341_BLACK : ILI9341_LIGHTGREY;
-  }
-
+  unsigned int arrowColor = ((arcSwitch == ARC_ON) && (overTempAlert == false))? ILI9341_BLACK : ILI9341_LIGHTGREY;
+  
   // Arrow Up Icon
   tft.fillRoundRect(COORD_R(AUPBOX), arrowColor);
   tft.drawBitmap(AUPBOX_X + 1, AUPBOX_Y + 8, arrowUpBitmap, 45, 60, ILI9341_WHITE);
@@ -1329,6 +1366,22 @@ void drawPulseAmpsSettings(bool update_only)
 }
 
 // *********************************************************************************************
+// Show Pulse Amps Settings Button Box (Left / Right arrows with pulseFreqX10 value)
+static void drawOpModeSettings(bool update_only)
+{
+    if (page == PG_SET_MODE) {
+      const char* modeName = "Unknown";
+      switch (startMode)
+      {
+        case LIFT_START: modeName = "TIG Lift"; break;
+        case SCRATCH_START: modeName = "Stick Scratch"; break;
+        case SPOT_MODE: modeName = "Spot Mode"; break;
+      }
+      drawPlusMinusButtons(COORD(PSBOX), String(modeName), update_only);
+    }
+}
+
+// *********************************************************************************************
 // Show Pulse Frequency Settings Button Box (Left / Right arrows with pulseFreqX10 value)
 void drawPulseHzSettings(bool update_only)
 {
@@ -1355,6 +1408,27 @@ void drawSettingsPage()
 
   // Show the Bluetooth On/Off Button.
   drawBasicButton(FBBOX_X + FBBOX_W + 12,FBBOX_Y, BOBOX_W, FBBOX_H, ILI9341_BLACK);
+
+}
+
+// *********************************************************************************************
+static void drawOpModeSettingsPage()
+{
+  drawSubPage("MODE SETTINGS", PG_SET_MODE, ILI9341_WHITE, ILI9341_CYAN);
+
+  // Show Pulse Settings Buttons (Left / Right arrows)
+  drawOpModeSettings(false);
+
+  // Pulse Current Settings Button
+  drawPulseAmpsSettings(false);
+
+  // Show the BlueTooth Scan Button.
+  // drawBasicButton(COORD(FBBOX),ILI9341_BLACK);
+
+  // showBleStatus(BLE_MSG_AUTO); // Show status message in Bluetooth button box.
+
+  // Show the Bluetooth On/Off Button.
+  // drawBasicButton(FBBOX_X + FBBOX_W + 12,FBBOX_Y, BOBOX_W, FBBOX_H, ILI9341_BLACK);
 
 }
 
@@ -1430,6 +1504,7 @@ void showHeartbeat(void)
     else {
       drawCaution(CAUTION_X, CAUTION_Y, heartBeat);
     }
+    drawPinState(HEART_X - 25, HEART_Y);
   }
 }
 
