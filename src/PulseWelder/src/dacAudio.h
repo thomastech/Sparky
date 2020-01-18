@@ -59,6 +59,10 @@ extern const uint8_t currentOn_wav_start[] asm ("_binary_src_wav_currentOn_wav_s
 // extern const uint8_t currentOn_wav_end[] asm("_binary_src_wav_currentOn_wav_end");
 const unsigned char *currentOn_wav = (const unsigned char *)currentOn_wav_start;
 
+extern const uint8_t currentOff_wav_start[] asm ("_binary_src_wav_currentOff_wav_start");
+// extern const uint8_t currentOn_wav_end[] asm("_binary_src_wav_currentOff_wav_end");
+const unsigned char *currentOff_wav = (const unsigned char *)currentOff_wav_start;
+
 extern const uint8_t overheat_wav_start[] asm ("_binary_src_wav_overheat_wav_start");
 // extern const uint8_t overheat_wav_end[] asm("_binary_src_wav_overheat_wav_end");
 const unsigned char *overheat_wav = (const unsigned char *)overheat_wav_start;
@@ -117,6 +121,7 @@ XT_Wav_Class bloop(bloop_wav);
 XT_Wav_Class blip(blip_wav);
 XT_Wav_Class bleep(bleep_wav);
 XT_Wav_Class currentOnMsg(currentOn_wav);
+XT_Wav_Class currentOffMsg(currentOff_wav);
 XT_Wav_Class overHeatMsg(overheat_wav);
 XT_Wav_Class increaseMsg(increaseMsg_wav);
 XT_Wav_Class decreaseMsg(decreaseMsg_wav);

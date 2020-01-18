@@ -27,6 +27,11 @@ extern XT_Wav_Class silence100ms;
 extern XT_Wav_Class overHeatMsg;
 extern XT_Wav_Class promoMsg;
 
+extern XT_Wav_Class currentOnMsg;
+extern XT_Wav_Class currentOffMsg;
+extern XT_Wav_Class increaseMsg;
+extern XT_Wav_Class decreaseMsg;
+
 // Global Music Audio Generation
 extern XT_MusicScore_Class highBeep;
 extern XT_MusicScore_Class lowBeep;
