@@ -20,12 +20,6 @@
 #include "config.h"
 #include "speaker.h"
 
-// Global Wave Files.
-extern XT_Wav_Class increaseMsg;
-extern XT_Wav_Class currentOnMsg;
-extern XT_Wav_Class decreaseMsg;
-extern XT_Wav_Class overHeatMsg;
-extern XT_Wav_Class promoMsg;
 
 // Global System vars
 extern int  Amps;            // Live Welding Current.
@@ -134,23 +128,7 @@ int getFobClick(bool rst)
   return fobKey;
 }
 
-// *********************************************************************************************
-// Remote control of the Amps settings via Bluetooth iTAG Button FOB.
-// The remotely changed Amps settings are NOT saved to EEPROM.
-void remoteControl(void)
-{
-  int click = CLICK_NONE;
-
-  processFobClick();         // Update button detection status on BLE FOB.
-  click = getFobClick(true); // Get Button Click value.
-
-  if ((click == CLICK_SINGLE) || (click == CLICK_DOUBLE)) {
-    if (spkrVolSwitch != VOL_OFF)
-    {
-      spkr.stopSounds();  // Override existing announcement.
-      spkr.addSoundList({&beep});
-    }
-
+void remoteControlCurrentValue(int click) {
     if(overTempAlert){
         if(overHeatMsg.Playing==false) {
             spkr.stopSounds();  // Override existing announcement.
@@ -159,7 +137,7 @@ void remoteControl(void)
         Serial.println("Announce: Alarm");
     }
     else if(arcSwitch != ARC_ON) {
-        arcSwitch = ARC_ON;
+        controlArc(ARC_ON, VERBOSE_OFF);
         drawHomePage();
         spkr.addSoundList({&silence100ms, &ding, &beep, &silence100ms, &currentOnMsg});
         spkr.playSoundList();
@@ -193,6 +171,58 @@ void remoteControl(void)
         spkr.addDigitSounds(setAmps);
         spkr.playSoundList();
     }
+}
+
+void remoteControlCurrentOnOff(int click)
+{
+  if (overTempAlert)
+  {
+    if (overHeatMsg.Playing == false)
+    {
+      spkr.stopSounds(); // Override existing announcement.
+    }
+    spkr.playToEnd(overHeatMsg);
+    Serial.println("Announce: Alarm");
+  }
+  else if ((click == CLICK_SINGLE) && arcSwitch != ARC_ON)
+  {
+    controlArc(ARC_ON, VERBOSE_OFF);
+    drawHomePage();
+    spkr.addSoundList({&silence100ms, &ding, &beep, &silence100ms, &currentOnMsg});
+    spkr.playSoundList();
+    Serial.println("Announce: Arc Current Turned On.");
+  }
+  else if ((click == CLICK_SINGLE) && arcSwitch != ARC_OFF)
+  {
+    controlArc(ARC_OFF, VERBOSE_OFF);
+    drawHomePage();
+    spkr.addSoundList({&silence100ms, &ding, &beep, &silence100ms, &currentOffMsg});
+    spkr.playSoundList();
+    Serial.println("Announce: Arc Current Turned Off.");
+  }
+  spkr.playSoundList();
+}
+
+// *********************************************************************************************
+// Remote control of the Amps settings via Bluetooth iTAG Button FOB.
+// The remotely changed Amps settings are NOT saved to EEPROM.
+void remoteControl(void)
+{
+  int click = CLICK_NONE;
+
+  processFobClick();         // Update button detection status on BLE FOB.
+  click = getFobClick(true); // Get Button Click value.
+
+  if ((click == CLICK_SINGLE) || (click == CLICK_DOUBLE)) {
+    if (spkrVolSwitch != VOL_OFF)
+    {
+      spkr.stopSounds();  // Override existing announcement.
+      spkr.addSoundList({&beep});
+    }
+
+    remoteControlCurrentValue(click);
+    //remoteControlCurrentOnOff(click);
+
   }
 }
 
