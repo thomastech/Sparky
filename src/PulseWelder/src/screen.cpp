@@ -52,6 +52,8 @@ static long abortMillis     = 0;     // Info Page Abort Timer, in mS.
 static long previousEepMillis   = 0; // Previous Home Page time.
 
 #define COORD(BOXNAME) BOXNAME ## _X , BOXNAME ## _Y , BOXNAME ## _W , BOXNAME ## _H
+#define COORD_R(BOXNAME) BOXNAME ## _X , BOXNAME ## _Y , BOXNAME ## _W , BOXNAME ## _H , BOXNAME ## _R
+
 #define IS_IN_BOX(BOXNAME) (isInBox(x, y, COORD(BOXNAME)))
 
 
@@ -1181,6 +1183,17 @@ void drawErrorPage()
   tft.print("(Repairs Required)");
 }
 
+/**
+ * @brief draws a rounded button box with a 45 x 45 bitmap
+ */
+static void drawHomeMenuButton(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t r, const uint8_t* bitmap, uint32_t bgColor)
+{
+  tft.fillRoundRect(x, y, w, h, r, bgColor);
+  if (bitmap != NULL) {
+    tft.drawBitmap(x + 1, y + 2, bitmap, 45, 45, ILI9341_WHITE);
+  }
+}
+
 // *********************************************************************************************
 // Home Page.
 void drawHomePage()
@@ -1194,19 +1207,16 @@ void drawHomePage()
   displayOverTempAlert(); // Display temperature warning if too hot.
 
   // Draw Menu Icons
-  tft.fillRoundRect(ARCBOX_X, ARCBOX_Y, ARCBOX_W, ARCBOX_H, ARCBOX_R, BUTTONBACKGROUND);
-  tft.drawBitmap(ARCBOX_X + 1, ARCBOX_Y + 2, arcSwitch == ARC_ON? arcOnBitmap : arcOffBitmap, 45, 45, ILI9341_WHITE);
+  drawHomeMenuButton(COORD_R(ARCBOX),arcSwitch == ARC_ON? arcOnBitmap : arcOffBitmap, BUTTONBACKGROUND);
 
   // Speaker Volume Icon
   updateVolumeIcon();
 
   // Info Icon
-  tft.fillRoundRect(INFOBOX_X, INFOBOX_Y, INFOBOX_W, INFOBOX_H, INFOBOX_R, BUTTONBACKGROUND);
-  tft.drawBitmap(INFOBOX_X + 1, INFOBOX_Y + 2, infoBitmap, 45, 45, ILI9341_WHITE);
+  drawHomeMenuButton(COORD_R(INFOBOX),infoBitmap, BUTTONBACKGROUND);
 
   // Settings Icon
-  tft.fillRoundRect(SETBOX_X, SETBOX_Y, SETBOX_W, SETBOX_H, SETBOX_R, BUTTONBACKGROUND);
-  tft.drawBitmap(SETBOX_X + 1, SETBOX_Y + 2, settingsBitmap, 45, 45, ILI9341_WHITE);
+  drawHomeMenuButton(COORD_R(SETBOX), settingsBitmap, BUTTONBACKGROUND);
 
   unsigned int arrowColor;
   if(overTempAlert) {
@@ -1217,11 +1227,11 @@ void drawHomePage()
   }
 
   // Arrow Up Icon
-  tft.fillRoundRect(AUPBOX_X, AUPBOX_Y, AUPBOX_W, AUPBOX_H, AUPBOX_R, arrowColor);
+  tft.fillRoundRect(COORD_R(AUPBOX), arrowColor);
   tft.drawBitmap(AUPBOX_X + 1, AUPBOX_Y + 8, arrowUpBitmap, 45, 60, ILI9341_WHITE);
 
   // Arrow Down Icon
-  tft.fillRoundRect(ADNBOX_X, ADNBOX_Y, ADNBOX_W, ADNBOX_H, ADNBOX_R, arrowColor);
+  tft.fillRoundRect(COORD_R(ADNBOX), arrowColor);
   tft.drawBitmap(ADNBOX_X + 1, ADNBOX_Y + 8, arrowDnBitmap, 45, 60, ILI9341_WHITE);
 
   drawPulseIcon();
@@ -1422,13 +1432,9 @@ void showHeartbeat(void)
 // *********************************************************************************************
 void updateVolumeIcon(void)
 {
-  tft.fillRoundRect(SNDBOX_X, SNDBOX_Y, SNDBOX_W, SNDBOX_H, SNDBOX_R, BUTTONBACKGROUND);
+  drawHomeMenuButton(COORD_R(SNDBOX),spkrVolSwitch >= VOL_LOW ? soundBitmap : soundOffBitmap, BUTTONBACKGROUND);
 
-  if ((spkrVolSwitch >= VOL_OFF) && (spkrVolSwitch < VOL_LOW)) { // Audio Off
-    tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundOffBitmap, 45, 45, ILI9341_WHITE);
-  }
-  else if (spkrVolSwitch >= VOL_LOW) {
-    tft.drawBitmap(SNDBOX_X + 1, SNDBOX_Y + 2, soundBitmap, 45, 45, ILI9341_WHITE);
+  if (spkrVolSwitch >= VOL_LOW) {
 
     if (spkrVolSwitch >= VOL_MED) {
       fillArc(SNDBOX_X + 8, SNDBOX_Y + 25, 62, 8, 25, 25, 2, ILI9341_WHITE);   // 1st Short arc
