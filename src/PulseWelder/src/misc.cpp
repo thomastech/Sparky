@@ -1,10 +1,10 @@
 /*
    File: misc.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
+   Version: 1.2
    Creation: Sep-11-2019
-   Revised: Dec-29-2019.
-   Public Release: Jan-03-2020
+   Revised: Jan-14-2020
+   Public Release: Jan-15-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
@@ -17,35 +17,14 @@
 #include <Wire.h>
 #include "digPot.h"
 #include "PulseWelder.h"
-#include "XT_DAC_Audio.h"
 #include "config.h"
-
-// Global Audio Generation
-extern XT_DAC_Audio_Class DacAudio;
-
-// Global Audio Sequencer
-extern XT_Sequence_Class Sequence;
+#include "speaker.h"
 
 // Global Wave Files.
 extern XT_Wav_Class increaseMsg;
 extern XT_Wav_Class currentOnMsg;
 extern XT_Wav_Class decreaseMsg;
 extern XT_Wav_Class overHeatMsg;
-extern XT_Wav_Class silence100ms;
-extern XT_Wav_Class beep;
-extern XT_Wav_Class bleep;
-extern XT_Wav_Class ding;
-extern XT_Wav_Class n000;
-extern XT_Wav_Class n001;
-extern XT_Wav_Class n002;
-extern XT_Wav_Class n003;
-extern XT_Wav_Class n004;
-extern XT_Wav_Class n005;
-extern XT_Wav_Class n006;
-extern XT_Wav_Class n007;
-extern XT_Wav_Class n008;
-extern XT_Wav_Class n009;
-extern XT_Wav_Class n010;
 extern XT_Wav_Class promoMsg;
 
 // Global System vars
@@ -61,48 +40,6 @@ extern bool pulseState;      // Arc Pulse modulation state (on/off).
 extern byte spkrVolSwitch;   // Audio Volume, five levels.
 extern byte setAmps;         // Default Welding Amps *User Setting*.
 extern byte pulseSwitch;     // Pulse Mode On/Off Flag. Pseudo Boolean; byte declared for EEPROM.
-
-// *********************************************************************************************
-// Add the wav file item for the 0-9 number passed by calller
-void AddNumberToSequence(int theNumber)
-{
-  switch (theNumber)
-  {
-    case 0:
-      Sequence.AddPlayItem(&n000);
-      break;
-    case 1:
-      Sequence.AddPlayItem(&n001);
-      break;
-    case 2:
-      Sequence.AddPlayItem(&n002);
-      break;
-    case 3:
-      Sequence.AddPlayItem(&n003);
-      break;
-    case 4:
-      Sequence.AddPlayItem(&n004);
-      break;
-    case 5:
-      Sequence.AddPlayItem(&n005);
-      break;
-    case 6:
-      Sequence.AddPlayItem(&n006);
-      break;
-    case 7:
-      Sequence.AddPlayItem(&n007);
-      break;
-    case 8:
-      Sequence.AddPlayItem(&n008);
-      break;
-    case 9:
-      Sequence.AddPlayItem(&n009);
-      break;
-    default:
-      Sequence.AddPlayItem(&silence100ms); // Invalid arg! Say nothing.
-      break;
-  }
-}
 
 // *********************************************************************************************
 // Check Welder's OC Led signal for alert condition. Could be over-heat or over-current state.
@@ -203,7 +140,6 @@ int getFobClick(bool rst)
 void remoteControl(void)
 {
   int click = CLICK_NONE;
-  int amps1, amps10, amps100;
 
   processFobClick();         // Update button detection status on BLE FOB.
   click = getFobClick(true); // Get Button Click value.
@@ -211,86 +147,51 @@ void remoteControl(void)
   if ((click == CLICK_SINGLE) || (click == CLICK_DOUBLE)) {
     if (spkrVolSwitch != VOL_OFF)
     {
-      DacAudio.StopAllSounds();      // Override existing announcement.
-      // Sequence.ClearAfterPlay = true;  // New feature (this is a test).
-      Sequence.RemoveAllPlayItems(); // Clear previously sequenced items.
-      Sequence.Volume = 127;         // Maximum sub-volume.
-      Sequence.Repeat = 0;           // Don't Repeat.
-      Sequence.AddPlayItem(&beep);
+      spkr.stopSounds();  // Override existing announcement.
+      spkr.addSoundList({&beep});
     }
 
     if(overTempAlert){
-        Sequence.AddPlayItem(&currentOnMsg);
-        DacAudio.Play(&overHeatMsg, true);
+        if(overHeatMsg.Playing==false) {
+            spkr.stopSounds();  // Override existing announcement.
+        }
+        spkr.playToEnd(overHeatMsg);
         Serial.println("Announce: Alarm");
     }
     else if(arcSwitch != ARC_ON) {
         arcSwitch = ARC_ON;
         drawHomePage();
-        if (spkrVolSwitch != VOL_OFF) {
-          Sequence.AddPlayItem(&silence100ms);
-          Sequence.AddPlayItem(&ding);
-          Sequence.AddPlayItem(&beep);
-          Sequence.AddPlayItem(&silence100ms);
-          Sequence.AddPlayItem(&currentOnMsg);
-          DacAudio.Play(&Sequence, true);
-        }
+        spkr.addSoundList({&silence100ms, &ding, &beep, &silence100ms, &currentOnMsg});
+        spkr.playSoundList();
         Serial.println("Announce: Arc Current Turned On.");
     }
     else {
+        int changeVal = 0;
         if (click == CLICK_SINGLE) {
-            if (setAmps != MAX_SET_AMPS) {
-                if (setAmps <= MAX_SET_AMPS - REMOTE_AMP_CHG) {
-                    setAmps += REMOTE_AMP_CHG;
-                }
-                else {
-                    setAmps = MAX_SET_AMPS;
-                }
-
-                if (spkrVolSwitch != VOL_OFF) {
-                    Sequence.AddPlayItem(&increaseMsg);
-                }
-                Serial.print("Announce: Increase ");
-            }
-            else {
-                Serial.print("Announce <no change>:  ");
-            }
+          changeVal = REMOTE_AMP_CHG;
         }
         else if (click == CLICK_DOUBLE) {
-            if (setAmps != MIN_SET_AMPS) {
-                if (setAmps >= MIN_SET_AMPS + REMOTE_AMP_CHG) {
-                    setAmps -= REMOTE_AMP_CHG;
-                }
-                else {
-                    setAmps = MIN_SET_AMPS;
-                }
-
-                if (spkrVolSwitch != VOL_OFF) {
-                    Sequence.AddPlayItem(&decreaseMsg);
-                }
-                Serial.print("Announce: Decrease ");
-            }
-            else {
-                Serial.print("Announce <no change>: ");
-            }
+          changeVal = -REMOTE_AMP_CHG;
         }
 
-        setAmps = constrain(setAmps, MIN_SET_AMPS, MAX_SET_AMPS);
-        amps100 = setAmps / 100;
-        amps10  = (setAmps - amps100 * 100) / 10;
-        amps1   = setAmps - (amps100 * 100 + amps10 * 10);
+        byte newSetAmps = constrain((int)setAmps + changeVal, MIN_SET_AMPS, MAX_SET_AMPS);
+        // explicitly cast setAmps to int in order to handle going into negative amps when subtracting changeVal
+        // gracefully.
 
-        Serial.println(String(amps100) + "-" + String(amps10) + "-" + String(amps1));
+        if (setAmps != newSetAmps) {
+            spkr.addSoundList({(setAmps < newSetAmps) ? &increaseMsg : &decreaseMsg});
+            Serial.print(setAmps < newSetAmps ? "Announce: Increase ": "Announce: Decrease ");
+            setAmps = newSetAmps;
+        }
+        else {
+            Serial.print("Announce <no change>:  ");
+        }
+
+        Serial.println(String((setAmps/100) % 10) + "-" + String((setAmps/10) % 10) + "-" + String(setAmps % 10));
+
         setPotAmps(setAmps, VERBOSE_ON);           // Refresh Digital Pot.
-
-        if (spkrVolSwitch != VOL_OFF) {
-            if (amps100 > 0) {                     // Suppress extraneous leading zero.
-                AddNumberToSequence(amps100);
-            }
-            AddNumberToSequence(amps10);
-            AddNumberToSequence(amps1);
-            DacAudio.Play(&Sequence, true);
-        }
+        spkr.addDigitSounds(setAmps);
+        spkr.playSoundList();
     }
   }
 }

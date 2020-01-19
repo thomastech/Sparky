@@ -4,6 +4,7 @@
 * http://www.ti.com/product/ina219
 *
 * 6 May 2012 by John De Cristofaro
+* Jan-14-2020: Improved response time, by hogthrob for Sparky Welding Project.
 *
 *
 * Tested at standard i2c 100kbps signaling rate.
@@ -119,6 +120,8 @@ class INA219
 
 	int16_t read16(uint8_t addr);
 	void write16(uint8_t addr, uint16_t data);
+
+	int last_addr;
 
 };
 
