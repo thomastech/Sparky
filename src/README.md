@@ -24,3 +24,6 @@ All required files are provided in the zip file, including the library dependenc
 ### Source Code Formatting
 All .cpp and .h files have been formatted with the Uncrustify extension. The uncrustify.cfg file is included in the file package.
 
+### Version History
+The PulseWelder.cpp source file contains a summary of the changes for each release. See the "Revision History" notes at the top of the file.
+
