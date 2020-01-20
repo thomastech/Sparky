@@ -1,10 +1,10 @@
 /*
    File: PulseWelder.h
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.2
+   Version: 1.3
    Creation: Sep-11-2019
-   Revised: Jan-14-2020
-   Public Release: Jan-15-2020
+   Revised: Jan-20-2020
+   Public Release: Jan-20-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
@@ -19,7 +19,7 @@
 
 // *********************************************************************************************
 // VERSION STRING: Must be updated with each public release! The version is shown on the boot screen.
-#define VERSION_STR "V1.2"
+#define VERSION_STR "V1.3"
 
 // *********************************************************************************************
 // GPIO Pin Definitions

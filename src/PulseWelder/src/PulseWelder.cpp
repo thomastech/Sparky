@@ -1,10 +1,10 @@
 /*
    File: PulseWelder.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.2
+   Version: 1.3
    Creation: Sep-11-2019
-   Revised: Jan-14-2020
-   Public Release: Jan-15-2020
+   Revised: Jan-20-2020
+   Public Release: Jan-20-2020
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
 
@@ -50,6 +50,13 @@
        Updated INA219 library, improved response time.
        Removed monitor port directive from platformio.ini.
        Sound and Screen Handling refactoring.
+    V1.3, Jan-20-2020:
+    - Updated platformio.ini
+      Idle RTS & DTR to prevent hard reset when Serial Monitor launched.
+      f_cpu now uses default 240MHz.
+    - Delayed first startup log message to allow time for IDE to receive serial data.
+    - Minor string updates to menu's log messages in screen.cpp.
+    - BLE now requires Key FOB's advertised name to match the expected name. This prevents false-positive connections.
 
    Notes:
    1. This "Arduino" project must be compiled with VSCode / Platformio. Do not use the Arduino IDE.
@@ -117,17 +124,14 @@ void setup()
   digitalWrite( LED_PIN, LED_ON);
   digitalWrite(SHDN_PIN, HIGH); // Disable the PWM Controller.
 
-  //  pinMode(DEBUG_PIN, OUTPUT); // Debug Test Output
-  //  digitalWrite(DEBUG_PIN, 0);
+  digitalWrite(TFT_RST, LOW);
+  delay(50);
+  digitalWrite(TFT_RST, HIGH);
 
+  delay(1250);                  // Allow Serial Monitor to open (debug messages).
   Serial.flush();
   Serial.println(                                "\n\n");
   Serial.println("Pulse Welder Controller Starting ...");
-
-  digitalWrite(TFT_RST, LOW);
-  delay(250);
-  digitalWrite(TFT_RST, HIGH);
-  delay(250);
 
   // Setup the TFT and Touch Array.
   ts.begin();                    // Initialize Touch Sensor Array.

@@ -1,10 +1,10 @@
 /*
    File: screen.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.2
+   Version: 1.3
    Creation: Sep-11-2019
-   Revised: Jan-14-2020.
-   Public Release: Jan-15-2020
+   Revised: Jan-20-2020.
+   Public Release: Jan-20-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
@@ -562,7 +562,7 @@ void processScreen(void)
 
       if (IS_IN_BOX(RTNBOX))// Return button. Return to homepage.
       {
-        Serial.println("Exit Info, retured to home page");
+        Serial.println("User Exit Info, retured to home page");
         drawHomePage();
 
         spkr.lowBeep();
@@ -612,7 +612,7 @@ void processScreen(void)
 
       if (millis() > abortMillis + PG_RD_TIME_MS)
       {
-        Serial.println("Settings page timeout, exit.");
+        Serial.println("Machine Settings page timeout, exit.");
         abortMillis = millis();// Reset the settings page's keypress abort timer.
         drawHomePage();
 
@@ -627,7 +627,7 @@ void processScreen(void)
 
       if (IS_IN_BOX(RTNBOX))// Return button. Return to home page.
       {
-        Serial.println("User Settings page, retured to Home page");
+        Serial.println("User Exit Machine Settings, returned to Home page");
         abortMillis = millis();
         drawHomePage();
 

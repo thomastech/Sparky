@@ -1,10 +1,10 @@
 /*
    File: bleFobClient.cpp. Bluetooth Client for the FOB Button (https://ebay.to/2M150E0)
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
+   Version: 1.3
    Creation: Sep-11-2019
-   Revised: Dec-29-2019.
-   Public Release: Jan-03-2020
+   Revised: Jan-20-2020.
+   Public Release: Jan-20-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech
@@ -47,10 +47,12 @@ extern int  buttonClick;  // Bluetooth FOB Button click type, single or double c
 unsigned int   bleType = iTAG_FOB;
 static BLEUUID serviceUUID(BLEUUID("ffe0"));         // iTAG FOB Button Service UUID.
 static BLEUUID charUUID1(BLEUUID((uint16_t)0xffe1)); // iTAG FOB Button Characteristic UUID.
+String advName = "iTAG";                             // iTAG FOB Button Advertised Name.
 #elif  FOB_TYPE == TrackerPA_FOB                     // BLE Configured for trackerPA FOB
 unsigned int   bleType = TrackerPA_FOB;
 static BLEUUID serviceUUID(BLEUUID("fff0"));         // TrackerPA FOB Button Service UUID.
 static BLEUUID charUUID1(BLEUUID((uint16_t)0xfff1)); // TrackerPA FOB Button Characteristic UUID.
+String advName = "TrackerPA";                        // TrackerPA FOB Button Advertised Name.
 #else                                                // Unkown FOB device
  # error "Incorrect FOB_TYPE specified in config.h"
 #endif                                               // End of FOB define block
@@ -292,14 +294,32 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
       Serial.println(" -> Advertised Name does NOT match.");
     }
 */
-    // We have found a device. Check for the service we are looking for.
+    // We have found a device. Check for the Service UUID and FOB Name we are looking for.
     if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
       Serial.println(" -> Found a matching Advertised Service.");
-      BLEDevice::getScan()->stop();
-      pMyDevice  = new BLEAdvertisedDevice(advertisedDevice);
-      fobAddress = pMyDevice->getAddress(); // This address could be saved in Flash (future feature).
-      doConnect  = true;
-      doScan     = true;
+
+      if (advertisedDevice.haveName()) {
+//      Serial.println(String(advertisedDevice.getName().c_str()));
+        String deviceNameUc = String(advertisedDevice.getName().c_str());
+        String advNameUc = advName;
+        deviceNameUc.toUpperCase();
+        advNameUc.toUpperCase();
+        if(deviceNameUc.startsWith(advNameUc)) {
+//          Serial.println(" -> Device Name: " + advName + " (is a match).");
+            Serial.println(" -> Found a matching Advertised Name.");
+            BLEDevice::getScan()->stop();
+            pMyDevice  = new BLEAdvertisedDevice(advertisedDevice);
+            fobAddress = pMyDevice->getAddress(); // This address could be saved in Flash (future feature).
+            doConnect  = true;
+            doScan     = true;
+        }
+        else {
+            Serial.println(" -> Advertised Name Does NOT match!");
+        }
+      }
+      else {
+        Serial.println(" -> Advertised Name does NOT match <name missing>");
+      }
     }
     else {
       Serial.println(" -> Advertised Service does NOT match.");
