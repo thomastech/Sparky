@@ -147,8 +147,8 @@
 
 // *********************************************************************************************
 enum StartMode {
-  SCRATCH_START,
-  LIFT_START,
+  SCRATCH_START, // MMA/Stick welding
+  LIFT_START,  // TIG LIFT START, requires minimal current setting to be very low (<10A?), otherwise tungsten electrode will be melting
   SPOT_MODE,
 };
 
@@ -164,6 +164,40 @@ enum ShutdownPinAvail
   ERROR_NO_VOLTAGE,
   ERROR_SHORTCIRCUIT,
 };
+
+enum ArcState
+{
+  ARC_UNKNOWN = 0,
+  OPEN_NO_ARC = 1,
+  SHORT = 2,
+  SHORT_LOW = 3,
+  ARC = 4
+};
+
+template<class T, T minV, T maxV, T incrV> struct ConstMinMaxVal {
+  static const T min = minV;
+  static const T max = maxV;
+  static const T incr = incrV;
+  T val;
+
+  ConstMinMaxVal(const T& v): val(v) {};
+  ConstMinMaxVal(): val(minV) {};
+};
+
+struct HotStart 
+{
+  ConstMinMaxVal<int, 50, 200, 10> percent = { 100 };
+  ConstMinMaxVal<int, 0, 5000, 250> duration = { ARC_STABLIZE_TM }; // in ms
+  bool enabled = true;
+
+};
+
+struct WeldConfig 
+{
+  HotStart hotstart;
+};
+
+extern WeldConfig weldConfig;
 
 extern ShutdownPinAvail shtdnpin;
 

@@ -220,7 +220,7 @@ void resetVdcBuffer(void)
   }
 }
 
-int arcState = 0;
+ArcState arcState = ARC_UNKNOWN;
 int prevArcState = 0;
 bool arcStateChanged = false;
 unsigned long arcStateChangeTime = 0;
@@ -232,35 +232,35 @@ unsigned long arcStateChangeTime = 0;
 void detectArcState()
 {
   const int ampLimit = 20;
-  int newArcState = 0;
+  ArcState newArcState = ARC_UNKNOWN;
   static uint32_t shortTimer = 0;
 
   if (Volts >= 1 && Amps < ampLimit) {
-    newArcState = 1;
+    newArcState = OPEN_NO_ARC;
   } 
   else if (Volts < 1 && Amps >= ampLimit) {
-    if (arcState != 2) {
+    if (arcState != SHORT) {
       uint32_t now = millis();
       if (shortTimer < now - 1000) {
         shortTimer = now;
       } 
       else if (shortTimer < now - 250) {
-        newArcState = 2;
+        newArcState = SHORT;
       }
     } 
   }
   else if (Volts < 1 && Amps >= 0 && Amps < ampLimit) {
-    newArcState = 3;
+    newArcState = SHORT_LOW;
   }
   else {
-    newArcState = 4;
+    newArcState = ARC;
   }
 
-  if (newArcState != 0 && newArcState != 2) {
+  if (newArcState != ARC_UNKNOWN && newArcState != SHORT) {
     shortTimer = 0; // detection of any other valid state resets short timer
   } 
 
-  if (newArcState != arcState && newArcState != 0)
+  if (newArcState != arcState && newArcState != ARC_UNKNOWN)
   {
     unsigned long now = millis();
     unsigned long delta = now - arcStateChangeTime;

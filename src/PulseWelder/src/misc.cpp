@@ -101,17 +101,19 @@ void disableArc(bool verbose)
 
   setPotAmps(ARC_OFF_AMPS, verbose); // Set Digital Pot to lowest welding current.
 
-  #ifdef PWM_ARC_CTRL
-   digitalWrite(SHDN_PIN, PWM_OFF);  // Disable PWM Controller.
-   if (verbose == VERBOSE_ON) {
-     Serial.println("Arc Current Turned Off (Disabled PWM Controller).");
-   }
-  #else
-   digitalWrite(SHDN_PIN, PWM_ON); // PWM feature disabled by config.h; Don't shutdown!
-   if (verbose == VERBOSE_ON) {
-     Serial.println("Arc Current Suppressed (Reduced to " + String(ARC_OFF_AMPS) + " Amps).");
-   }
-  #endif
+  if (shtdnpin == PRESENT)
+  {
+    digitalWrite(SHDN_PIN, PWM_OFF);  // Disable PWM Controller.
+    if (verbose == VERBOSE_ON) {
+      Serial.println("Arc Current Turned Off (Disabled PWM Controller).");
+    }
+  }
+  else {
+    digitalWrite(SHDN_PIN, PWM_ON); // PWM feature disabled by config.h; Don't shutdown!
+    if (verbose == VERBOSE_ON) {
+      Serial.println("Arc Current Suppressed (Reduced to " + String(ARC_OFF_AMPS) + " Amps).");
+    }
+  }
 }
 
 // *********************************************************************************************
@@ -270,11 +272,18 @@ float PulseFreqHz(void)
 
 extern int arcState;
 extern int prevArcState;
+
 extern bool arcStateChanged;
+extern unsigned long arcStateChangeTime;
 
 StartMode startMode = SCRATCH_START;
-std::list<StartMode> startModeList = { SCRATCH_START, LIFT_START, SPOT_MODE };
+std::list<StartMode> startModeList = { 
+  SCRATCH_START, 
+  LIFT_START, 
+  /* SPOT_MODE */ };
+// list of available operation modes
 
+WeldConfig weldConfig;
 
 // *********************************************************************************************
 // Modulate the Welding Arc Current if Pulse Mode is Enabled.
@@ -292,20 +301,20 @@ void pulseModulation(void)
     byte desiredAmps              = setAmps;
     static uint32_t arcStartTimer = 0;
 
-    if ((startMode == LIFT_START) && (arcState != 4)) {
+    if ((startMode == LIFT_START) && (arcState != ARC)) {
       static bool liftDetected = false;
 
-      if (arcState != 1)
+      if (arcState != OPEN_NO_ARC)
       {
         liftDetected = false;
       }
 
-      if ((arcState == 2) && arcStateChanged)
+      if ((arcState == SHORT) && arcStateChanged)
       {
         Serial.println("Stick detected, set arc force current");
       }
 
-      if ((prevArcState == 3) && (arcState == 1))
+      if ((prevArcState == SHORT_LOW) && (arcState == OPEN_NO_ARC))
       {
         if (arcStateChanged) {
           arcStartTimer = millis();
@@ -324,13 +333,31 @@ void pulseModulation(void)
       desiredAmps     = liftDetected == true ? setAmps : 1;
       setPot          = true;             // force setting
     }
-    else if (pulseSwitch == PULSE_OFF) {  // Pulse mode is disabled.
-      if (millis() > previousMillis + 500) {// Refresh Digital POT every 0.5Sec.
+    else if (pulseSwitch == PULSE_OFF) { // Pulse mode is disabled.
+      if (millis() > previousMillis + 100) {// Refresh Digital POT every 0.1Sec.
+        arcTimer = millis();
+        // Hot Start
+        if ((weldConfig.hotstart.enabled == true) 
+              && (
+                    ((arcState == ARC) && millis() < (arcStateChangeTime + weldConfig.hotstart.duration.val)) ||
+                    (arcState == OPEN_NO_ARC)
+                  )
+        ) 
+        {
+          desiredAmps = (setAmps * weldConfig.hotstart.percent.val) / 100;
+        }
+        // Antistick, reduce or turn off current if short lasted for too long
+        else if (arcState == SHORT && millis() > (arcStateChangeTime + 1000)) {
+           controlArc(ARC_OFF, VERBOSE_OFF);
+           desiredAmps = 0;
+        }
+        else {
+          desiredAmps = setAmps;
+        }
         previousMillis = millis();
-        arcTimer       = millis();
         setPot         = true;
       }
-      pulseState = false;                        // Pulsed current is Off.
+      pulseState = false;// Pulsed current is Off.
     }
     else {
       float period = (1.0 / PulseFreqHz()) / 0.002;// Convert freq to mS/2.

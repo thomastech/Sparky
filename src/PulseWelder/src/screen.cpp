@@ -73,40 +73,33 @@ void handleTouchHitList(touchFunctionHitList& subPages) {
   }
 }
 
+
+/**
+ * @brief trigger delayed saving of configuration data to EEPROM emulation
+ */
+void eepromRequestSaving()
+{
+  // Let the caller know that we would like to update the EEPROM if the value has changed.
+  eepromActive      = true;     // Request EEPROM save for new settings.
+  previousEepMillis = millis(); // Set EEPROM write delay timer.
+}
 // *********************************************************************************************
 // Change Welder's Pulse Mode amps, Increase or decrement from 10% to 90%.
 // Used by processScreen().
 // On exit, true returned if end of travel was reached.
 bool adjustPulseAmps(bool direction)
 {
-  bool limitHit = false;
-
-  // Increase or decrease the value. Range is MIN_PULSE_Amps to MAX_PULSE_Amps.
-  if ((direction == INCR) && (pulseAmpsPc < MAX_PULSE_AMPS_PC)) {
-    pulseAmpsPc += PULSE_AMPS_STEP;
-  }
-  else if ((direction == DECR) && (pulseAmpsPc > MIN_PULSE_AMPS_PC)) {
-    pulseAmpsPc -= PULSE_AMPS_STEP;
-  }
-
-  // Check for out of bounds values. Constrain in necessary.
-  if (pulseAmpsPc >= MAX_PULSE_AMPS_PC) {
-    pulseAmpsPc = MAX_PULSE_AMPS_PC;
-    limitHit    = true;
-  }
-  else if (pulseAmpsPc <= MIN_PULSE_AMPS_PC) {
-    pulseAmpsPc = MIN_PULSE_AMPS_PC;
-    limitHit    = true;
-  }
-
+  int changeVal = direction == INCR ? 1 : -1;
+  
+  pulseAmpsPc = constrain((int)pulseAmpsPc + changeVal, MIN_PULSE_AMPS_PC, MAX_PULSE_AMPS_PC);
+  
   // Refresh the Pulse Entry display (if on page PG_SET)
   drawPulseAmpsSettings(true);
 
   // Let the caller know that we would like to update the EEPROM if the value has changed.
-  eepromActive      = true;     // Request EEPROM save for new settings.
-  previousEepMillis = millis(); // Set EEPROM write delay timer.
+  eepromRequestSaving();
 
-  return limitHit;
+  return   (pulseAmpsPc == MAX_PULSE_AMPS_PC || pulseAmpsPc == MIN_PULSE_AMPS_PC);
 }
 
 // *********************************************************************************************
@@ -116,39 +109,31 @@ bool adjustPulseAmps(bool direction)
 // On exit, true returned if end of travel was reached.
 bool adjustPulseFreq(bool direction)
 {
-  bool limitHit = false;
-  int  nextFreq;
-
-  nextFreq = direction == INCR ? 1 : -1;
-
+  int nextFreq = direction == INCR ? 1 : -1;
+  int unconstrainedPulseFreqX10 = pulseFreqX10;
   // Increase or decrease the value. Range is MIN_PULSE_FRQ (0.4Hz) to MAX_PULSE_FRQ (5.0Hz).
   if ((pulseFreqX10 >= MIN_PULSE_FRQ_X10) && (pulseFreqX10 < 10)) {       // 0.5Hz to 0.9Hz
-    pulseFreqX10 += nextFreq;
+    unconstrainedPulseFreqX10 += nextFreq;
   }
   else if ((pulseFreqX10 == 10) && (direction == DECR)) {                 // 1.0Hz being decremented
-    pulseFreqX10 += nextFreq;
+    unconstrainedPulseFreqX10 += nextFreq;
   }
   else if ((pulseFreqX10 >= 10) && (pulseFreqX10 <= MAX_PULSE_FRQ_X10)) { // 1.0Hz to 5.0Hz
-    pulseFreqX10 += nextFreq * 10;
+    unconstrainedPulseFreqX10 += nextFreq * 10;
   }
 
   // Check for out of bounds values. Constrain in necessary.
-  byte constrainedPulseFreqX10 = constrain(pulseFreqX10, MIN_PULSE_FRQ_X10, MAX_PULSE_FRQ_X10);
-
-  limitHit = constrainedPulseFreqX10 != pulseFreqX10;
-  // if constrained freq is not equal original frequency we are out of bounds
-
-  pulseFreqX10 = constrainedPulseFreqX10;
-  // always use constrained frequency
+  byte pulseFreqX10 = constrain(unconstrainedPulseFreqX10, MIN_PULSE_FRQ_X10, MAX_PULSE_FRQ_X10);
 
   // Refresh the Pulse Entry display (if on page PG_SET)
   drawPulseHzSettings(true);
 
   // Let the caller know that we would like to update the EEPROM if the value has changed.
-  eepromActive      = true;     // Request EEPROM save for new settings.
-  previousEepMillis = millis(); // Set EEPROM write delay timer.
+  eepromRequestSaving();
 
-  return limitHit;
+  return unconstrainedPulseFreqX10 != pulseFreqX10;
+  // if constrained freq is not equal original frequency we we  have been out of bounds
+
 }
 
 // *********************************************************************************************
@@ -187,8 +172,7 @@ bool changeOpMode(bool direction)
   drawOpModeSettings(true);
 
   // Let the caller know that we would like to update the EEPROM if the value has changed.
-  eepromActive      = true;     // Request EEPROM save for new settings.
-  previousEepMillis = millis(); // Set EEPROM write delay timer.
+  eepromRequestSaving();
 
   return limitHit;
 }
@@ -307,37 +291,6 @@ void drawPlusMinusButtons(int x, int y, int w, int h, String label, bool update_
 }
 
 
-void handleRodInfoPage(String rodName, bool& wasTouched)
-{
-  if (!ts.touched())
-  {
-    wasTouched = false;
-
-    if (millis() > abortMillis + PG_RD_TIME_MS)
-    {
-      Serial.println(rodName + " Info page timeout, exit.");
-      abortMillis = millis();// Reset the info page's keypress abort timer.
-      drawInfoPage();
-
-      spkr.lowBeep();
-    }
-  }
-  else if (ts.touched() && !wasTouched)
-  {
-    abortMillis = millis();
-    wasTouched      = true;
-    getTouchPoints();
-
-    if (IS_IN_BOX(SCREEN))// Press anywhere on screen to main info page.
-    {
-      Serial.println(String("User Exit ") + rodName +  " Info, returned to main info page");
-      abortMillis = millis();
-      drawInfoPage();
-
-      spkr.lowBeep();
-    }
-  }
-}
 
   bool limitHit                  = false;         // Control reached end of travel.
   static bool setAmpsActive      = false;         // Amps Setting flag.
@@ -355,7 +308,7 @@ void handleRodInfoPage(String rodName, bool& wasTouched)
  * @brief handles return to main page upon pressing return and if no touch has been detected 
  * @returns false if user code should be running
  */
-bool handleStandardSubPageActions(const char* pageName)
+bool handleStandardSubPageActions(const char* pageName, void  (*rtnPage)() = drawHomePage)
 {
     bool retval = true;
     if (!ts.touched())
@@ -364,7 +317,7 @@ bool handleStandardSubPageActions(const char* pageName)
 
       if (millis() > abortMillis + MENU_RD_TIME_MS) {
         Serial.println(String(pageName) + " page timeout, exit.");
-        drawHomePage();
+        rtnPage();
         spkr.lowBeep();
       }
     }
@@ -375,8 +328,8 @@ bool handleStandardSubPageActions(const char* pageName)
 
       if (IS_IN_BOX(RTNBOX))// Return button. Return to homepage.
       {
-        Serial.println(String("Exit ") + pageName + ", retured to home page");
-        drawHomePage();
+        Serial.println(String("Exit ") + pageName + ", returned to parent page");
+        rtnPage();
 
         spkr.lowBeep();
       } 
@@ -388,11 +341,21 @@ bool handleStandardSubPageActions(const char* pageName)
     return retval;
 }
 
-void handleStandardSubPage(const char* pageName, touchFunctionHitList& buttons) {
-  if (handleStandardSubPageActions(pageName) == false) {
+void handleStandardSubPage(const char* pageName, touchFunctionHitList& buttons, void  (*rtnPage)() = drawHomePage) {
+  if (handleStandardSubPageActions(pageName, rtnPage) == false) {
     handleTouchHitList(buttons);
   }
 }
+
+void handleRodInfoPage(String rodName, bool& wasTouched)
+{
+    touchFunctionHitList subPages = {
+        touchFunctionHit([] () { return IS_IN_BOX(SCREEN); }, drawInfoPage),
+    };
+    handleStandardSubPage(rodName + " Info", subPages, drawInfoPage);
+  }
+}
+
 // *********************************************************************************************
 // Process the TouchScreen actions.
 // Display screen pages, get touch inputs, perform actions.
@@ -466,8 +429,7 @@ void processScreen(void)
           else {
             spkr.lowBeep();
           }
-          previousEepMillis = millis();
-          eepromActive      = true;// Request EEProm Write after timer expiry.
+          eepromRequestSaving();
         }
       }
       else if (IS_IN_BOX(SNDBOX))
@@ -500,22 +462,18 @@ void processScreen(void)
           spkr.highBeep();
           Serial.println("Sound Set to Volume " + String(spkrVolSwitch));
         }
-        previousEepMillis = millis();
-        eepromActive      = true;// Request EEProm Write after timer expiry.
+        eepromRequestSaving();
         updateVolumeIcon();
       }
       else if (IS_IN_BOX(INFOBOX))
       {// Info button pressed
+        spkr.highBeep();
         // drawInfoPage();
         drawOpModeSettingsPage();
-        spkr.highBeep();
       }
       else if (IS_IN_BOX(SETBOX))
       {// Settings button pressed
-        if (spkrVolSwitch != VOL_OFF) {
-          spkr.stopSounds();
-          spkr.playToEnd(highBeep);
-        }
+        spkr.highBeep();
         drawSettingsPage();
       }
 
@@ -543,8 +501,7 @@ void processScreen(void)
             setAmpsTimer     = millis();
 
             arrowMillis       = millis();
-            previousEepMillis = millis();
-            eepromActive      = true;       // Request EEProm Write after timer expiry.
+            eepromRequestSaving();
 
             
             setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
@@ -575,9 +532,8 @@ void processScreen(void)
         drawPulseIcon();
         displayAmps(true);       // Refresh Amps display to update background color.
         controlArc(arcSwitch, VERBOSE_OFF);
-        previousEepMillis = millis();
-        eepromActive      = true;// Request EEProm Write after timer expiry.
-      }
+        eepromRequestSaving();
+    }
     }
     else if (ts.touched() && wasTouched)
     {
@@ -606,8 +562,7 @@ void processScreen(void)
               repeatms = REPEAT_SLOW_MS;// millisecond delay, slow.
             }
             arrowMillis       = millis();
-            previousEepMillis = millis();
-            eepromActive      = true;       // Request EEProm Write after timer expiry.
+            eepromRequestSaving();
 
             setPotAmps(setAmps, VERBOSE_ON);// Refresh Digital Pot.
             displayAmps(true);              // Refresh amps value.
@@ -653,101 +608,91 @@ void processScreen(void)
 
   else if (page == PG_SET)// Settings Page
   {
-    if (handleStandardSubPageActions("Machine Settings") == false)
-    {
-      static auto pulseFreqFunc = [] (int mode) 
-      { 
-        limitHit = adjustPulseFreq(mode);
-        Serial.println(String(mode == INCR? "Increased" : "Decreased") + " Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Change Pulse Freq.
-        spkr.limitHit(blip, limitHit);
-      };
+    static auto pulseFreqFunc = [] (int mode) 
+    { 
+      limitHit = adjustPulseFreq(mode);
+      Serial.println(String(mode == INCR? "Increased" : "Decreased") + " Pulse Freq: " + String(PulseFreqHz(), 1) + " Hz");// Change Pulse Freq.
+      spkr.limitHit(blip, limitHit);
+    };
 
-      static auto pulseAmpsFunc = [] (int mode) 
-      { 
-        limitHit = adjustPulseAmps(mode);
-        Serial.println(String(mode == INCR? "Increased" : "Decreased") + " Pulse Current: " + String(pulseAmpsPc) + "%");// Change Pulse Bg Current.
-        spkr.limitHit(blip, limitHit);
-      };
+    static auto pulseAmpsFunc = [] (int mode) 
+    { 
+      limitHit = adjustPulseAmps(mode);
+      Serial.println(String(mode == INCR? "Increased" : "Decreased") + " Pulse Current: " + String(pulseAmpsPc) + "%");// Change Pulse Bg Current.
+      spkr.limitHit(blip, limitHit);
+    };
 
-      if (isInBox(x, y, PSBOX_X  + PSBOX_W - 45, PSBOX_Y, 45, PSBOX_H))  {
-        pulseFreqFunc(INCR);
-      }
-      else if (isInBox(x, y, PSBOX_X, PSBOX_Y, 45, PSBOX_H))
-      {
-        pulseFreqFunc(DECR);
-      }
-      else if (isInBox(x, y, PCBOX_X, PCBOX_Y, 45, PCBOX_H))
-      {
-        pulseAmpsFunc(DECR);
-      }
-      else if (isInBox(x, y, PCBOX_X  + PCBOX_W - 45, PCBOX_Y, 45, PCBOX_H))
-      {
-        pulseAmpsFunc(INCR);
-      }
-      else if (IS_IN_BOX(BOBOX))
-      {
-        bleSwitch    = (bleSwitch == BLE_ON ? BLE_OFF : BLE_ON);// Pseudo Boolean toggle.
+    static auto bleFunc = [] () {
+      bleSwitch    = (bleSwitch == BLE_ON ? BLE_OFF : BLE_ON);// Pseudo Boolean toggle.
 
-        if ((bleSwitch == BLE_OFF) && (isBleServerConnected() == true)) {
-          stopBle();
+      if ((bleSwitch == BLE_OFF) && (isBleServerConnected() == true)) {
+        stopBle();
+      }
+      eepromRequestSaving();
+ 
+      showBleStatus(BLE_MSG_AUTO); // Update the Bluetooth On/Off button.
+      Serial.println("Bluetooth Mode: " + String(bleSwitch == BLE_ON ? "ON" : "OFF"));
+
+      spkr.play((bleSwitch == BLE_ON) ? blip : bleep);
+    };
+
+    static auto bleSwitchFunc = [] () {
+      if (bleSwitch == BLE_OFF)
+      {
+        spkr.bloop();
+        Serial.println("Bluetooth Disabled!");
+      }
+      else if (isBleServerConnected())
+      {
+        spkr.bleep();
+        Serial.println("Bluetooth Already Connected!");
+        showBleStatus(BLE_MSG_FOUND);
+      }
+      else
+      {
+        showBleStatus(BLE_MSG_SCAN);// Post "Bluetooth Scanning" message.
+        spkr.playToEnd(blip);
+
+        if (isBleDoScan()) {
+          Serial.println("User Requested BlueTooth Reconnect.");
+          reconnectBlueTooth(BLE_RESCAN_TIME);// Try to Reconnect to lost connection.
+        }
+        else {
+          Serial.println("User Requested Fresh BlueTooth Scan.");
+          scanBlueTooth();                                                 // Fresh Scan, never connected before.
         }
 
-        eepromActive = true;                                    // Request EEPROM save for new settings.
-        previousEepMillis = millis();// Set EEPROM write delay timer.
+        reconnectTimer(true);                                              // Reset Auto-Reconnect Timer.
+        bleWaitMillis = millis();
 
-        showBleStatus(BLE_MSG_AUTO); // Update the Bluetooth On/Off button.
-        Serial.println("Bluetooth Mode: " + String(bleSwitch == BLE_ON ? "ON" : "OFF"));
-
-        spkr.play((bleSwitch == BLE_ON) ? blip : bleep);
-      }
-      else if (isInBox(x, y, FBBOX_X + 5, FBBOX_Y - 4, FBBOX_W - 15, FBBOX_H - 6))
-      {
-        if (bleSwitch == BLE_OFF)
+        while (millis() <= bleWaitMillis + 2000 && !isBleServerConnected())// Wait for advert callback to confirm connect.
         {
-          spkr.bloop();
-          Serial.println("Bluetooth Disabled!");
+          spkr.fillBuffer();                                               // Fill the sound buffer with data.
+          showHeartbeat();                                                 // Draw Heartbeat icon.
+          checkBleConnection();                                            // Check the Bluetooth iTAG FOB Button server connection.
         }
-        else if (isBleServerConnected())
-        {
-          spkr.bleep();
-          Serial.println("Bluetooth Already Connected!");
-          showBleStatus(BLE_MSG_FOUND);
+
+        if (isBleServerConnected()) {
+          showBleStatus(BLE_MSG_FOUND);// Post "Found" message.
         }
-        else
-        {
-          showBleStatus(BLE_MSG_SCAN);// Post "Bluetooth Scanning" message.
-          spkr.playToEnd(blip);
-
-          if (isBleDoScan()) {
-            Serial.println("User Requested BlueTooth Reconnect.");
-            reconnectBlueTooth(BLE_RESCAN_TIME);// Try to Reconnect to lost connection.
-          }
-          else {
-            Serial.println("User Requested Fresh BlueTooth Scan.");
-            scanBlueTooth();                                                 // Fresh Scan, never connected before.
-          }
-
-          reconnectTimer(true);                                              // Reset Auto-Reconnect Timer.
-          bleWaitMillis = millis();
-
-          while (millis() <= bleWaitMillis + 2000 && !isBleServerConnected())// Wait for advert callback to confirm connect.
-          {
-            spkr.fillBuffer();                                               // Fill the sound buffer with data.
-            showHeartbeat();                                                 // Draw Heartbeat icon.
-            checkBleConnection();                                            // Check the Bluetooth iTAG FOB Button server connection.
-          }
-
-          if (isBleServerConnected()) {
-            showBleStatus(BLE_MSG_FOUND);// Post "Found" message.
-          }
-          else {
-            showBleStatus(BLE_MSG_FAIL); // Post "Not Found"
-          }
+        else {
+          showBleStatus(BLE_MSG_FAIL); // Post "Not Found"
         }
       }
-    }
+    };
+
+    touchFunctionHitList buttons = {
+      touchFunctionHit([] () { return isInBox(x, y, PSBOX_X  + PSBOX_W - 45, PSBOX_Y, 45, PSBOX_H); }, [] () { pulseFreqFunc(INCR); }),
+      touchFunctionHit([] () { return isInBox(x, y, PSBOX_X, PSBOX_Y, 45, PSBOX_H); }, [] () { pulseFreqFunc(DECR); }),
+      touchFunctionHit([] () { return isInBox(x, y, PCBOX_X  + PCBOX_W - 45, PCBOX_Y, 45, PCBOX_H); }, [] () { pulseAmpsFunc(INCR); }),
+      touchFunctionHit([] () { return isInBox(x, y, PCBOX_X, PCBOX_Y, 45, PCBOX_H); }, [] () { pulseAmpsFunc(DECR); }),
+      touchFunctionHit([] () { return IS_IN_BOX(BOBOX); }, bleFunc),
+      touchFunctionHit([] () { return isInBox(x, y, FBBOX_X + 5, FBBOX_Y - 4, FBBOX_W - 15, FBBOX_H - 6); }, bleSwitchFunc),
+    };
+
+    handleStandardSubPage("Machine Settings", buttons);
   }
-else if (page == PG_SET_MODE)// Settings Page
+  else if (page == PG_SET_MODE)// Settings Page
   {
     static auto changeModeFunc = [] (int mode) {
                   limitHit = changeOpMode(mode);
@@ -818,11 +763,8 @@ void displayAmps(bool forceRefresh)
 
     if (arcSwitch == ARC_OFF)
     {
-    #ifdef PWM_ARC_CTRL
-      dispAmps = 0; // Arc current disabled via PWM Shutdown (fully turned off).
-    #else
-      dispAmps = ARC_OFF_AMPS; // Arc Current set to minimum via digital pot.
-    #endif
+      dispAmps = shtdnpin == ShutdownPinAvail::PRESENT ? 0 : ARC_OFF_AMPS; 
+      // if shutdown pin working, arc current disabled via PWM Shutdown (fully turned off) otherwise use minimal current.
     }
     else if ((oldsetAmps == setAmps) && (forceRefresh == false))
     {
