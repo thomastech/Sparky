@@ -51,6 +51,36 @@ static int  x, y;                    // Screen's Touch coordinates.
 static long abortMillis     = 0;     // Info Page Abort Timer, in mS.
 static long previousEepMillis   = 0; // Previous Home Page time.
 
+// modeList -> { nameOf Mode, list of mode settings -> { name, isApplicable, rangeCheck, nextValueFunc(dir), renderButtonTextFunc}
+// change mode
+// change settings
+// change settingsValue
+
+class  Setting
+{
+  public:
+  const char* name;
+  virtual bool isApplicableFunc() { return true;};
+  virtual void nextValueFunc(int dir);
+  virtual String renderText();
+  Setting(const char* n): name(n) {};
+};
+
+
+template<class CMMV> class ConstMinMaxSetting: public Setting 
+{
+  public:
+    ConstMinMaxSetting(CMMV&, const char* name ): Setting(name) {};
+    void nextValueFunc(int dir) { 
+      int changeVal = (dir = 1? 1: -1) * cmmv.incr;  
+      cmmv.val = constrain(cmmv.val + changeVal,cmmv.min, cmmv.max);
+    }
+    String renderText() { return String(cmmv.val); }
+  private:
+    CMMV& cmmv;
+};
+
+
 #define COORD(BOXNAME) BOXNAME ## _X , BOXNAME ## _Y , BOXNAME ## _W , BOXNAME ## _H
 #define COORD_R(BOXNAME) BOXNAME ## _X , BOXNAME ## _Y , BOXNAME ## _W , BOXNAME ## _H , BOXNAME ## _R
 
@@ -83,6 +113,7 @@ void eepromRequestSaving()
   eepromActive      = true;     // Request EEPROM save for new settings.
   previousEepMillis = millis(); // Set EEPROM write delay timer.
 }
+
 // *********************************************************************************************
 // Change Welder's Pulse Mode amps, Increase or decrement from 10% to 90%.
 // Used by processScreen().
@@ -352,8 +383,7 @@ void handleRodInfoPage(String rodName, bool& wasTouched)
     touchFunctionHitList subPages = {
         touchFunctionHit([] () { return IS_IN_BOX(SCREEN); }, drawInfoPage),
     };
-    handleStandardSubPage(rodName + " Info", subPages, drawInfoPage);
-  }
+    handleStandardSubPage((rodName + " Info").c_str(), subPages, drawInfoPage);
 }
 
 // *********************************************************************************************
@@ -389,7 +419,6 @@ void processScreen(void)
     if (homeMillis - previousHomeMillis >= DATA_REFRESH_TIME) {
       previousHomeMillis = homeMillis;
 
-      // drawBattery(BATTERY_X, BATTERY_Y);
       displayOverTempAlert();// Display temperature warning if too hot.
       displayAmps(false);
       displayVolts(false);
@@ -476,7 +505,6 @@ void processScreen(void)
         spkr.highBeep();
         drawSettingsPage();
       }
-
       else if (IS_IN_BOX(AUPBOX) || IS_IN_BOX(ADNBOX))
       {                                               // Increase Amps Setting
         if ((arcSwitch == ARC_OFF) || overTempAlert) {// Welding current disabled.
@@ -995,15 +1023,12 @@ void drawInfoPageRod(int pageNum, const char* rodName, const char* mainInfo[4], 
   tft.setFont(&FreeSans12pt7b);
 
   tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(15, 70);
-  tft.println(mainInfo[0]);
-  tft.setCursor(15, 100);
-  tft.println(mainInfo[1]);
-  tft.setCursor(15, 130);
-  tft.println(mainInfo[2]);
-  tft.setCursor(15, 160);
-  tft.print(mainInfo[3]);
-
+  for (int lineidx = 0; lineidx < 4; lineidx++)
+  {
+    tft.setCursor(15, 70+30*lineidx);
+    tft.println(mainInfo[lineidx]);
+  }
+  
   tft.setTextColor(ILI9341_YELLOW);
   tft.println(rodInfo[0]);
   tft.setCursor(15, 190);
@@ -1102,22 +1127,11 @@ void drawCaution(int x, int y, bool state)
 // If Bluetooth is on, show bluetooth icon instead of heart.
 void drawHeart(int x, int y, bool state)
 {
-  int color;
-
-  tft.fillRoundRect(x - 1, y - 1, 18, 18, 5, ILI9341_WHITE);
+  tft.fillRoundRect(x - 1, y - 1, 18, 18, 5, ILI9341_WHITE); // draw empty background
 
   if (state) {
-    color = isBleServerConnected() == true ? ILI9341_BLUE : ILI9341_RED;
-  }
-  else {
-    color = ILI9341_WHITE;
-  }
-
-  if (isBleServerConnected()) {
-    tft.drawBitmap(x, y, bluetoothBitmap, 16, 16, color);
-  }
-  else {
-    tft.drawBitmap(x, y, heartBitmap, 16, 16, color);
+    int color = isBleServerConnected() == true ? ILI9341_BLUE : ILI9341_RED;
+    tft.drawBitmap(x, y, isBleServerConnected() ? bluetoothBitmap : heartBitmap, 16, 16, color);
   }
 }
 
@@ -1191,6 +1205,7 @@ void drawHomePage()
   page = PG_HOME;
 
   unsigned int color = arcSwitch == ARC_ON ? ARC_BG_COLOR : ILI9341_BLUE;
+ 
   drawPageFrame(color, ILI9341_CYAN);
   drawAmpsBox();
 
