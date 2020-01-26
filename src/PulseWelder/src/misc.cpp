@@ -98,22 +98,28 @@ void controlArc(bool state, bool verbose)
 void disableArc(bool verbose)
 {
   arcSwitch = ARC_OFF;
+  String msg = "";
+  // we delay writing messages until we finished the "real" arc off actions
+  // msg stores the messages for that 
 
-  setPotAmps(ARC_OFF_AMPS, verbose); // Set Digital Pot to lowest welding current.
-
-  if (shtdnpin == PRESENT)
+  if (shtdnpin != NOT_PRESENT)
   {
+    // unless we are sure there is no working shutdown pin, try using it.
     digitalWrite(SHDN_PIN, PWM_OFF);  // Disable PWM Controller.
     if (verbose == VERBOSE_ON) {
-      Serial.println("Arc Current Turned Off (Disabled PWM Controller).");
+      msg += "Arc Current Turned Off (Disabled PWM Controller).\n";
     }
   }
-  else {
-    digitalWrite(SHDN_PIN, PWM_ON); // PWM feature disabled by config.h; Don't shutdown!
+
+  if (shtdnpin != PRESENT) {
+    // unless we are sure there is a working shutdown pin, reduce current.
+    setPotAmps(ARC_OFF_AMPS, verbose); // Set Digital Pot to lowest welding current.
     if (verbose == VERBOSE_ON) {
-      Serial.println("Arc Current Suppressed (Reduced to " + String(ARC_OFF_AMPS) + " Amps).");
+      msg += "Arc Current Suppressed (Reduced to " + String(ARC_OFF_AMPS) + " Amps).'n";
     }
   }
+  
+  Serial.print(msg);
 }
 
 // *********************************************************************************************
