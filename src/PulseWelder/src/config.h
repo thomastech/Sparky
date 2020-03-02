@@ -1,10 +1,10 @@
 /*
    File: config.h
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.1
+   Version: 1.3.1
    Creation: Sep-11-2019
-   Revised: Dec-29-2019.
-   Public Release: Jan-03-2020
+   Revised: Feb-12-2020.
+   Public Release: Mar-01-2020
    Revision History: See PulseWelder.cpp
    Project Leader: T. Black (thomastech)
    Contributors: thomastech
@@ -32,7 +32,7 @@
 
 // ************************************************************************************************************************
 // INA219 Defines
-#define SHUNT_OHMS 0.000525     // ZX7-200's internal Shunt ohms. Reduce value to increase displayed realtime current.
+#define SHUNT_OHMS 0.000428     // ZX7-200's internal Shunt ohms. Reduce value to increase displayed realtime current.
 //#define SHUNT_OHMS 0.000375   // Shunt value used by user @hogthrob. See https://github.com/thomastech/Sparky/issues/2
 #define SHUNT_V_MAX 0.125       // Maximum voltage across shunt, in VDC.
 #define INA219_AVG_ON           // Use 32 samples per Shunt Acquistion (hardware avg). Comment this line to disable.
@@ -40,10 +40,10 @@
 // ************************************************************************************************************************
 // Welding Amps & Volts Defines
 #define ARC_OFF_AMPS MIN_AMPS   // Welder's output Amps when Arc is turned off. Must be >= MIN_AMPS.
-#define MAX_AMPS 105            // Enter actual Maximum welder output Amps (100A typical). Use clamp-on ammeter to cal.
-#define MIN_AMPS 45             // Enter actual Minimum welder output Amps (45A typical). Use clamp-on ammeter to cal.
-#define MAX_SET_AMPS MAX_AMPS   // Maximum permitted welder output Amps. Must be <= MAX_AMPS.
-#define MIN_SET_AMPS MIN_AMPS   // Minimum permitted welder output Amps. Must be >= MIN_AMPS.
+#define MAX_AMPS 125            // Enter actual Maximum welder output Amps (110A typical). Use clamp-on ammeter to cal.
+#define MIN_AMPS 65             // Enter actual Minimum welder output Amps (50A typical). Use clamp-on ammeter to cal.
+#define MAX_SET_AMPS MAX_AMPS   // Maximum permitted welder output Amps. Typically <= MAX_AMPS.
+#define MIN_SET_AMPS MIN_AMPS   // Minimum permitted welder output Amps. Typically >= MIN_AMPS.
 #define PULSE_AMPS_THRS 50      // Pulse Amps Threshold. Current must meet or exceed this value to permit pulse modulation.
 
 // ************************************************************************************************************************

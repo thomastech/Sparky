@@ -1,10 +1,10 @@
 /*
    File: PulseWelder.cpp
    Project: ZX7-200 MMA Stick Welder Controller with Pulse Mode.
-   Version: 1.3
+   Version: 1.3.1
    Creation: Sep-11-2019
-   Revised: Jan-20-2020
-   Public Release: Jan-20-2020
+   Revised: Feb-12-2020
+   Public Release: Mar-01-2020
    Project Leader: T. Black (thomastech)
    Contributors: thomastech, hogthrob
 
@@ -57,6 +57,13 @@
     - Delayed first startup log message to allow time for IDE to receive serial data.
     - Minor string updates to menu's log messages in screen.cpp.
     - BLE now requires Key FOB's advertised name to match the expected name. This prevents false-positive connections.
+    V1.3.1, Feb-12-2020:
+    - Updated platformio.ini
+      Added /boards/lolin_d32_pro_16MB.json. It includes hwids to ensure the IDE choses correct upload and serial
+      monitor ports. Requires Platformio core 4.2.0+. See https://github.com/platformio/platformio-core/issues/3349
+    - Updated config.h
+      Revised default shunt ohms.
+      Revised default Min/Max Amps values. Requires recalibrating PWM controller trim pot for maximum current (~125A).
 
    Notes:
    1. This "Arduino" project must be compiled with VSCode / Platformio. Do not use the Arduino IDE.

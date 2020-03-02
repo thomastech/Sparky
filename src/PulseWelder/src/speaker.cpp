@@ -51,6 +51,7 @@ Speaker spkr;
 
 extern byte spkrVolSwitch; // Audio Volume, five levels.
 
+// *********************************************************************************************
 Speaker::Speaker() {
     promoMsg.Speed     = 1.0;           // Normal Playback Speed.
     promoMsg.Volume    = 127;           // Maximum Sub-Volume (0-127 allowed).
@@ -58,24 +59,31 @@ Speaker::Speaker() {
     Sequence.Repeat = 0;           // Don't Repeat.
 
 }
+
+// *********************************************************************************************
 void Speaker::stopSounds() {
   DacAudio.StopAllSounds();
   Sequence.RemoveAllPlayItems();
 }
 
+// *********************************************************************************************
 void Speaker::fillBuffer() {
   DacAudio.FillBuffer();
 }
+
+// *********************************************************************************************
 void Speaker::volume(byte vol) {
   DacAudio.DacVolume = vol;
 }
 
+// *********************************************************************************************
 void Speaker::play(XT_PlayListItem_Class& sound) {
   if (spkrVolSwitch != VOL_OFF) {
     DacAudio.Play(&sound, true);
   }
 }
 
+// *********************************************************************************************
 void Speaker::playToEnd(XT_PlayListItem_Class& sound) {
   if (spkrVolSwitch != VOL_OFF) {
     DacAudio.Play(&sound, true);
@@ -86,34 +94,42 @@ void Speaker::playToEnd(XT_PlayListItem_Class& sound) {
   }
 }
 
+// *********************************************************************************************
 void Speaker::lowBeep() {
   play(::lowBeep);
 }
 
+// *********************************************************************************************
 void Speaker::highBeep() {
   play(::highBeep);
 }
 
+// *********************************************************************************************
 void Speaker::bleep() {
   play(::bleep);
 }
 
+// *********************************************************************************************
 void Speaker::bloop() {
   play(::bloop);
 }
 
+// *********************************************************************************************
 void Speaker::blip() {
   play(::blip);
 }
 
+// *********************************************************************************************
 void Speaker::beep() {
   play(::beep);
 }
 
+// *********************************************************************************************
 void Speaker::ding() {
   play(::ding);
 }
 
+// *********************************************************************************************
 void Speaker::limitHit(XT_PlayListItem_Class& sound, boolean condition) {
   if (condition) { // End of travel reached.
     bloop();
@@ -130,6 +146,7 @@ static void AddNumberToSequence(int theNumber) {
   Sequence.AddPlayItem( (theNumber < 10 && theNumber >= 0) ? digit[theNumber] : &silence100ms );
 }
 
+// *********************************************************************************************
 void Speaker::addDigitSounds(uint32_t val) {
         if (spkrVolSwitch != VOL_OFF) {
           const int max_num_digits = 10; // 32 bits == 10 base10 digits max.
@@ -148,15 +165,16 @@ void Speaker::addDigitSounds(uint32_t val) {
         }
 }
 
+// *********************************************************************************************
 void Speaker::addSoundList(std::vector<XT_Wav_Class*> sounds) {
   if (spkrVolSwitch != VOL_OFF) {
         std::for_each(sounds.begin(),sounds.end(), [](XT_Wav_Class* item) { Sequence.AddPlayItem(item); });
   }
 }
 
+// *********************************************************************************************
 void Speaker::playSoundList() {
   DacAudio.Play(&Sequence);
 }
-
 
 // EOF

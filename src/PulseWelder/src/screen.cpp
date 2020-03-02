@@ -26,7 +26,6 @@ extern XPT2046_Touchscreen ts;
 extern Adafruit_ILI9341    tft;
 
 // Global Vars
-
 extern int  Amps;             // Live Welding Output Current.
 extern byte arcSwitch;        // Welder Arc Current On/Off Flag. Pseudo Boolean.
 extern byte bleSwitch;        // Bluetooth On/Off Switch.
@@ -212,6 +211,7 @@ void getTouchPoints(void)
   Serial.println("[Touch Coordinates] X: " + String(x) + "  Y:" + String(y));
 }
 
+// *********************************************************************************************
 void drawCenteredText(int x, int y, int w, int h, String label, uint32_t bgcolor)
 {
   int16_t lx,ly;
@@ -226,12 +226,14 @@ void drawCenteredText(int x, int y, int w, int h, String label, uint32_t bgcolor
   tft.println(label);
 }
 
+// *********************************************************************************************
 void drawBasicButton(int x, int y, int w, int h, uint color)
 {
   tft.drawRoundRect(x - 2, y - 4, w+4, h + 8, 5, color);
   tft.drawRoundRect(x - 1, y - 3, w+2, h + 6, 5, color);
 }
 
+// *********************************************************************************************
 void drawPlusMinusButtons(int x, int y, int w, int h, String label, bool update_only)
 {
   tft.setFont(&FreeSansBold12pt7b);
@@ -246,7 +248,7 @@ void drawPlusMinusButtons(int x, int y, int w, int h, String label, bool update_
   }
 }
 
-
+// *********************************************************************************************
 void handleRodInfoPage(String rodName, bool& wasTouched)
 {
   if (!ts.touched())
@@ -953,12 +955,15 @@ void drawAmpBar(int x, int y, bool forceRefresh)
   tft.fillRect(AMPBAR_X, AMPBAR_Y, ampsMapped, AMPBAR_H, ILI9341_GREEN);
 }
 
+// *********************************************************************************************
 void drawPageFrame(uint32_t bgColor, uint32_t marginColor) {
   tft.fillScreen(ILI9341_BLACK); // CLS.
   tft.fillRoundRect(0, 0, SCREEN_W, SCREEN_H, 5, bgColor);
   tft.drawRoundRect(0, 0, SCREEN_W,     SCREEN_H,     5, marginColor);
   tft.drawRoundRect(1, 1, SCREEN_W - 2, SCREEN_H - 2, 5, marginColor);
 }
+
+// *********************************************************************************************
 void drawSubPage(String title, int pg, uint32_t bgColor, uint32_t marginColor) {
 
   Serial.println(String("Page: ") + title);
@@ -1087,7 +1092,7 @@ void drawInfoPage7018(void) {
 
 
 // *********************************************************************************************
-// Paint the heart icon, state determines color.
+// Paint the Caution icon, state determines color.
 void drawCaution(int x, int y, bool state)
 {
   unsigned int color;
@@ -1287,6 +1292,7 @@ void drawOverTempAlert(void) {
     tft.setCursor(AMPBOX_X + 35, AMPBOX_Y + 95);
     tft.println("ALARM!");
 }
+
 // *********************************************************************************************
 // Draw (or erase) the Arc lightning Bolt on Pulse Button.
 void drawPulseLightning(void)
