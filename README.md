@@ -19,8 +19,8 @@ The upgrade is driven by an ESP32 with 16MB FLASH. Several new features are adde
 ### Skills Required:
 This project is suitable for most advanced electronic circuit builders that are familiar with high voltage safety.
 Step-by-step wiring instructions and "Heathkit" type pictorial wiring diagrams are not provided. But 
-basic build information is available in the project blog at:
-https://www.rc-cam.com/forum/index.php?/topic/4605-sparky-a-little-stick-welder-with-big-features/
+basic build information is available in the project build log (PDF file):
+https://github.com/thomastech/Sparky/raw/master/Sparky_Stick_Welder.pdf
 
 ### Warning:
 An inverter welder is a potentially dangerous machine. Lethal primary voltages (>300 volts) are present inside the cabinet,
